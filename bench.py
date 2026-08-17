@@ -55,7 +55,15 @@ HISTORY = BENCH_DIR / "history.jsonl"
 # job proved that gap the expensive way, by looking impossible when it wasn't.
 # v2 adds YAML parsing and a genuinely multi-file spec. Scores are NOT comparable
 # across suite versions: v2 starts its own baseline.
-SUITE_VERSION = "v2"
+#
+# v3 (P20) adds a SWAGGER 2.0 task. Every v2 task is an OpenAPI 3.x document with
+# an absolute `servers` url, so no v2 run could ever exercise the 2.0 base-URL
+# path (`schemes` + `host` + `basePath`) — and that path was broken for 201 of
+# the 493 surveyed specs (40.8%) while the suite scored 1.00 thirteen times in a
+# row. The rule that follows from it: where the corpus splits into populations,
+# the suite carries one task per side, or the score is silent on the side it
+# lacks.
+SUITE_VERSION = "v3"
 
 TASKS = [
     # (id, spec url, include-regex, small?)
@@ -72,14 +80,44 @@ TASKS = [
     # --- v2 additions: YAML, and a spec whose operations live in other files ---
     ("deptrack", "https://raw.githubusercontent.com/DependencyTrack/dependency-track/main/api/src/main/openapi/openapi.yaml",
      "project|component|vuln", False),
+    # --- v3 addition: the SWAGGER 2.0 side of the corpus (40.8% of it) ---
+    # Wikimedia is 2.0: no `servers` block, base assembled from schemes+host+
+    # basePath. It is the only task that fails if the P20 fix regresses, and its
+    # generated base is checked below rather than merely smoke-tested.
+    ("wikimedia", "https://api.apis.guru/v2/specs/wikimedia.org/1.0.0/swagger.json", "", True),
 ]
+
+# P20/P21: a task may assert what its generated BASE must be. A schema-green
+# server pointed at localhost passes every other check in this file, so the base
+# URL is the one thing the smoke test structurally cannot see.
+EXPECTED_BASE = {
+    "petstore": "https://petstore3.swagger.io/api/v3",
+    "wikimedia": "https://wikimedia.org/api/rest_v1",
+}
 
 # Specs whose operations live in OTHER files (one YAML per URL, assembled at
 # build time — the DependencyTrack/Spring/JAX-RS house style). These MUST be
 # handed to the generator as a URL, never as a downloaded copy: an external $ref
 # resolves relative to the document it came from, so a local temp file resolves
 # nothing and the spec reads as having zero operations.
+# P22: a task that ASSERTS a generated base URL must be handed the spec's own
+# URL, exactly as a paying client hands one over (P2 step 1). The harness
+# downloads each spec once and passes the local copy for speed — but a relative
+# `servers` url ("/api/v3") means "the origin this document came from", and a
+# temp file has no origin, so the generator correctly falls back to the
+# localhost placeholder. That made run 14 score petstore as a base failure for
+# a defect that exists only in the harness's input shape, not in delivery.
 REMOTE_ONLY = {"deptrack"}
+
+# P22: the harness must hand the subject the CLIENT'S input, not its own
+# convenience copy. Every task except `deptrack` used to be passed as a
+# downloaded temp file, and a local file has NO ORIGIN — so a relative
+# `servers[0].url` (petstore's is "/api/v3") correctly degraded to the localhost
+# placeholder. The suite then scored that as a delivery failure of the
+# generator. It was a defect of the measurement: OFFERS.md Offer 1 takes "your
+# OpenAPI spec or docs URL", so the URL is the input under test. The harness
+# still fetches each spec itself for the fetch/size record.
+SPEC_AS_URL = True | set(EXPECTED_BASE)
 
 # Requires PyYAML from v2 onward (JSON-only suites did not).
 MAX_TOOLS = 8
@@ -122,7 +160,7 @@ def score_task(tid: str, url: str, include: str, workdir: Path) -> dict:
     rec["fetch"] = True
 
     out = workdir / f"{tid}_build"
-    spec_arg = url if tid in REMOTE_ONLY else str(spec)
+    spec_arg = url if (SPEC_AS_URL or tid in REMOTE_ONLY) else str(spec)
     cmd = [sys.executable, str(GEN), "--spec", spec_arg, "--name", tid,
            "--out", str(out), "--max-tools", str(MAX_TOOLS)]
     if include:
@@ -144,6 +182,23 @@ def score_task(tid: str, url: str, include: str, workdir: Path) -> dict:
         rec["tools"] = sum(
             1 for line in log.splitlines() if line.startswith("  ") and " -> " in line
         )
+
+    # P20/P21: assert the generated base URL before smoking. `unusable base` is
+    # a DELIVERY failure — the acceptance test is a live demo — even though the
+    # schema smoke below would pass happily against http://localhost:8000.
+    want = EXPECTED_BASE.get(tid)
+    if want:
+        server_py = out / f"{tid}_mcp_server.py"
+        got = ""
+        if server_py.exists():
+            m2 = re.search(r'^BASE = os\.environ\.get\([^,]+,\s*"([^"]*)"',
+                           server_py.read_text(encoding="utf-8"), re.M)
+            got = m2.group(1) if m2 else ""
+        rec["base"] = got
+        if got.rstrip("/") != want.rstrip("/"):
+            rec["error"] = f"base: expected {want!r}, got {got!r}"
+            rec["seconds"] = round(time.time() - t0, 1)
+            return rec
 
     smoke = out / "smoke_test.py"
     if not smoke.exists():
