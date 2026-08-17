@@ -26,6 +26,10 @@ def main():
     live = "--call" in sys.argv
     out = rpc([{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}])
+    if not out or "tools" not in (out[-1].get("result") or {}):
+        print("FAIL: the server did not answer tools/list. "
+              "Its stderr is above; the acceptance test has NOT passed.")
+        sys.exit(1)
     tools = out[-1]["result"]["tools"]
     print(f"initialize OK · {len(tools)} tools exposed")
     for t in tools:

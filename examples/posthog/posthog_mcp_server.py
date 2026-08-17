@@ -3,7 +3,7 @@
 
 Run:  python3 posthog_mcp_server.py
 Env:  POSTHOG_TOKEN   bearer token / api key (optional)
-      POSTHOG_BASE_URL  override base URL (default http://localhost:8000)
+      POSTHOG_BASE_URL  override base URL (default https://app.posthog.com)
 """
 import json
 import os
@@ -12,12 +12,63 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = os.environ.get("POSTHOG_BASE_URL", "http://localhost:8000").rstrip("/")
+BASE = os.environ.get("POSTHOG_BASE_URL", "https://app.posthog.com").rstrip("/")
 TOKEN = os.environ.get("POSTHOG_TOKEN", "")
 AUTH_HEADER = os.environ.get("POSTHOG_TOKEN_HEADER", "Authorization")
 AUTH_PREFIX = os.environ.get("POSTHOG_TOKEN_PREFIX", "Bearer ")
 
-TOOLS = [
+# P19: embedded as JSON and parsed at runtime, NOT as a Python literal. A schema
+# carrying a boolean/null (enum: [false, true], default: null) dumps as `false`/
+# `null`, which are not Python names — the server then dies at import with
+# `NameError: name 'false' is not defined` before it can answer a single request.
+TOOLS = json.loads(r"""
+[
+    {
+        "name": "code_invites_check_access_retrieve",
+        "description": "Check access",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        },
+        "_method": "GET",
+        "_path": "/api/code/invites/check-access/"
+    },
+    {
+        "name": "code_sandbox_pricing_list",
+        "description": "Get sandbox compute pricing",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        },
+        "_method": "GET",
+        "_path": "/api/code/sandbox-pricing/"
+    },
+    {
+        "name": "customer_analytics_external_accounts_retrieve",
+        "description": "List external customer analytics accounts",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "assigned_only": {
+                    "type": "boolean",
+                    "description": "When true, return only accounts with at least one active relationship assignment to a current member of the project's organization."
+                },
+                "cursor": {
+                    "type": "string",
+                    "description": "Account UUID from `next_cursor` to continue listing from. Omit for the first page."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of accounts to return. Values below 1 are clamped to 1; values above 100 are clamped to 100."
+                }
+            },
+            "required": []
+        },
+        "_method": "GET",
+        "_path": "/api/customer_analytics/external/accounts"
+    },
     {
         "name": "llm_analytics_personal_spend_list",
         "description": "Return a structured personal LLM spend analysis for the requesting user. Pass `date_from` / `date_to` (absolute like `2026-04-23` or relative like `-7d`) to bound the window \u2014 defaults to the last 30 days, max 90 days. The `product=<ai_product>` query param is required and scopes the tool / model / ",
@@ -66,15 +117,67 @@ TOOLS = [
         "_path": "/api/llm_analytics/@me/spend/"
     },
     {
-        "name": "billing_alerts_events_list",
-        "description": "List evaluation and notification events for this billing alert, newest first.",
+        "name": "list",
+        "description": "GET /api/organizations/",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of results to return per page."
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "The initial index from which to return the results."
+                }
+            },
+            "required": []
+        },
+        "_method": "GET",
+        "_path": "/api/organizations/"
+    },
+    {
+        "name": "retrieve",
+        "description": "GET /api/organizations/{id}/",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "id": {
                     "type": "string",
-                    "description": "A UUID string identifying this billing alert configuration."
-                },
+                    "description": "A UUID string identifying this organization."
+                }
+            },
+            "required": [
+                "id"
+            ]
+        },
+        "_method": "GET",
+        "_path": "/api/organizations/{id}/"
+    },
+    {
+        "name": "teams_data_freshness_retrieve",
+        "description": "When each project in the organization last received data, broken down by kind of data.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "A UUID string identifying this organization."
+                }
+            },
+            "required": [
+                "id"
+            ]
+        },
+        "_method": "GET",
+        "_path": "/api/organizations/{id}/teams/data_freshness/"
+    },
+    {
+        "name": "billing_alerts_list",
+        "description": "GET /api/organizations/{organization_id}/billing/alerts/",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
                 "limit": {
                     "type": "integer",
                     "description": "Number of results to return per page."
@@ -89,217 +192,14 @@ TOOLS = [
                 }
             },
             "required": [
-                "id",
                 "organization_id"
             ]
         },
         "_method": "GET",
-        "_path": "/api/organizations/{organization_id}/billing/alerts/{id}/events/"
-    },
-    {
-        "name": "organizations_projects_event_ingestion_restrictions_retrieve",
-        "description": "Projects for the current organization.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer",
-                    "description": "A unique value identifying this project."
-                },
-                "organization_id": {
-                    "type": "string",
-                    "description": "ID of the organization you're trying to access. To find the ID of the organization, make a call to /api/organizations/."
-                }
-            },
-            "required": [
-                "id",
-                "organization_id"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/api/organizations/{organization_id}/projects/{id}/event_ingestion_restrictions/"
-    },
-    {
-        "name": "cohorts_persons_retrieve",
-        "description": "GET /api/projects/{project_id}/cohorts/{id}/persons/",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "format": {
-                    "type": "string",
-                    "enum": [
-                        "csv",
-                        "json"
-                    ]
-                },
-                "id": {
-                    "type": "integer",
-                    "description": "A unique integer value identifying this cohort."
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of persons to return per page (defaults to 100)."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Number of persons to skip before starting to return results."
-                },
-                "project_id": {
-                    "type": "string",
-                    "description": "Project ID of the project you're trying to access. To find the ID of the project, make a call to /api/projects/."
-                }
-            },
-            "required": [
-                "id",
-                "project_id"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/api/projects/{project_id}/cohorts/{id}/persons/"
-    },
-    {
-        "name": "dashboards_run_insights_retrieve",
-        "description": "Run all insights on a dashboard and return their results.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "filters_override": {
-                    "type": "string",
-                    "description": "Object (or pre-encoded JSON string) to override dashboard filters for this request only (not persisted). Top-level keys replace; nested values are not deep-merged \u2014 pass the complete value for any key"
-                },
-                "format": {
-                    "type": "string",
-                    "enum": [
-                        "json",
-                        "txt"
-                    ]
-                },
-                "id": {
-                    "type": "integer",
-                    "description": "A unique integer value identifying this dashboard."
-                },
-                "output_format": {
-                    "type": "string",
-                    "description": "'optimized' (default) returns LLM-friendly formatted text per insight. 'json' returns the raw query result objects.",
-                    "enum": [
-                        "json",
-                        "optimized"
-                    ]
-                },
-                "project_id": {
-                    "type": "string",
-                    "description": "Project ID of the project you're trying to access. To find the ID of the project, make a call to /api/projects/."
-                },
-                "refresh": {
-                    "type": "string",
-                    "description": "Cache behavior. 'force_cache' (default) serves from cache even if stale. 'blocking' uses cache if fresh, otherwise recalculates. 'force_blocking' always recalculates.",
-                    "enum": [
-                        "blocking",
-                        "force_blocking",
-                        "force_cache"
-                    ]
-                },
-                "variables_override": {
-                    "type": "string",
-                    "description": "Object (or pre-encoded JSON string) to override dashboard variables for this request only (not persisted). Format: {\"<variable_id>\": {\"code_name\": \"<code_name>\", \"variableId\": \"<variable_id>\", \"value\""
-                }
-            },
-            "required": [
-                "id",
-                "project_id"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/api/projects/{project_id}/dashboards/{id}/run_insights/"
-    },
-    {
-        "name": "environments_event_ingestion_restrictions_retrieve",
-        "description": "Deprecated: use /api/environments/{id}/ instead.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer",
-                    "description": "A unique integer value identifying this environment (aka team)."
-                },
-                "project_id": {
-                    "type": "string",
-                    "description": "Project ID of the project you're trying to access. To find the ID of the project, make a call to /api/projects/."
-                }
-            },
-            "required": [
-                "id",
-                "project_id"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/api/projects/{project_id}/environments/{id}/event_ingestion_restrictions/"
-    },
-    {
-        "name": "error_tracking_spike_events_list",
-        "description": "GET /api/projects/{project_id}/error_tracking/spike_events/",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "description": "Number of results to return per page."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "The initial index from which to return the results."
-                },
-                "project_id": {
-                    "type": "string",
-                    "description": "Project ID of the project you're trying to access. To find the ID of the project, make a call to /api/projects/."
-                }
-            },
-            "required": [
-                "project_id"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/api/projects/{project_id}/error_tracking/spike_events/"
-    },
-    {
-        "name": "event_definitions_list",
-        "description": "GET /api/projects/{project_id}/event_definitions/",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "exclude_hidden": {
-                    "type": "boolean",
-                    "description": "When true, omit events that have been explicitly hidden by a team admin (Enterprise only)."
-                },
-                "exclude_stale": {
-                    "type": "boolean",
-                    "description": "When true, omit events whose last ingested occurrence is older than 30 days. Events that have never been seen (`last_seen_at` is null) are kept so newly-defined events remain discoverable. Default fal"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Number of results to return per page."
-                },
-                "names": {
-                    "type": "array",
-                    "description": "Return exact matches for these event names. Pass names as repeated or comma-separated values."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "The initial index from which to return the results."
-                },
-                "project_id": {
-                    "type": "string",
-                    "description": "Project ID of the project you're trying to access. To find the ID of the project, make a call to /api/projects/."
-                }
-            },
-            "required": [
-                "project_id"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/api/projects/{project_id}/event_definitions/"
+        "_path": "/api/organizations/{organization_id}/billing/alerts/"
     }
 ]
+""")
 
 SPECS = {t["name"]: t for t in TOOLS}
 

@@ -3,7 +3,7 @@
 
 Run:  python3 deptrack_mcp_server.py
 Env:  DEPTRACK_TOKEN   bearer token / api key (optional)
-      DEPTRACK_BASE_URL  override base URL (default /api/v2)
+      DEPTRACK_BASE_URL  override base URL (default http://localhost:8000/api/v2)
 """
 import json
 import os
@@ -12,12 +12,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = os.environ.get("DEPTRACK_BASE_URL", "/api/v2").rstrip("/")
+BASE = os.environ.get("DEPTRACK_BASE_URL", "http://localhost:8000/api/v2").rstrip("/")
 TOKEN = os.environ.get("DEPTRACK_TOKEN", "")
 AUTH_HEADER = os.environ.get("DEPTRACK_TOKEN_HEADER", "Authorization")
 AUTH_PREFIX = os.environ.get("DEPTRACK_TOKEN_PREFIX", "Bearer ")
 
-TOOLS = [
+# P19: embedded as JSON and parsed at runtime, NOT as a Python literal. A schema
+# carrying a boolean/null (enum: [false, true], default: null) dumps as `false`/
+# `null`, which are not Python names — the server then dies at import with
+# `NameError: name 'false' is not defined` before it can answer a single request.
+TOOLS = json.loads(r"""
+[
     {
         "name": "listcomponents",
         "description": "List all components",
@@ -287,6 +292,7 @@ TOOLS = [
         "_path": "/vulns/{source}/{vuln_id}/kev-assertions"
     }
 ]
+""")
 
 SPECS = {t["name"]: t for t in TOOLS}
 

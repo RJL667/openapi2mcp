@@ -3,7 +3,7 @@
 
 Run:  python3 lakekeeper_cat_mcp_server.py
 Env:  LAKEKEEPER_CAT_TOKEN   bearer token / api key (optional)
-      LAKEKEEPER_CAT_BASE_URL  override base URL (default https://raw.githubusercontent.com/{scheme}://{host}/{basePath})
+      LAKEKEEPER_CAT_BASE_URL  override base URL (default https://localhost)
 """
 import json
 import os
@@ -12,12 +12,33 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = os.environ.get("LAKEKEEPER_CAT_BASE_URL", "https://raw.githubusercontent.com/{scheme}://{host}/{basePath}").rstrip("/")
+BASE = os.environ.get("LAKEKEEPER_CAT_BASE_URL", "https://localhost").rstrip("/")
 TOKEN = os.environ.get("LAKEKEEPER_CAT_TOKEN", "")
 AUTH_HEADER = os.environ.get("LAKEKEEPER_CAT_TOKEN_HEADER", "Authorization")
 AUTH_PREFIX = os.environ.get("LAKEKEEPER_CAT_TOKEN_PREFIX", "Bearer ")
 
-TOOLS = [
+# P19: embedded as JSON and parsed at runtime, NOT as a Python literal. A schema
+# carrying a boolean/null (enum: [false, true], default: null) dumps as `false`/
+# `null`, which are not Python names — the server then dies at import with
+# `NameError: name 'false' is not defined` before it can answer a single request.
+TOOLS = json.loads(r"""
+[
+    {
+        "name": "getconfig",
+        "description": "List all catalog configuration settings",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "warehouse": {
+                    "type": "string",
+                    "description": "Warehouse location or identifier to request from the service"
+                }
+            },
+            "required": []
+        },
+        "_method": "GET",
+        "_path": "/v1/config"
+    },
     {
         "name": "listnamespaces",
         "description": "List namespaces, optionally providing a parent namespace to list underneath",
@@ -286,40 +307,9 @@ TOOLS = [
         },
         "_method": "GET",
         "_path": "/v1/{prefix}/namespaces/{namespace}/views"
-    },
-    {
-        "name": "loadview",
-        "description": "Load a view from the catalog",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "prefix": {
-                    "type": "string",
-                    "description": "An optional prefix in the path"
-                },
-                "namespace": {
-                    "type": "string",
-                    "description": "A namespace identifier as a single string. Multipart namespace parts must be separated by the namespace separator as indicated via the /config override `namespace-separator`, which defaults to the uni"
-                },
-                "view": {
-                    "type": "string",
-                    "description": "A view name"
-                },
-                "referenced-by": {
-                    "type": "string",
-                    "description": "A comma-separated list of fully qualified view names (namespace and view name) representing the view reference chain when an entity (table or view) is loaded via a view. The list should be ordered wit"
-                }
-            },
-            "required": [
-                "prefix",
-                "namespace",
-                "view"
-            ]
-        },
-        "_method": "GET",
-        "_path": "/v1/{prefix}/namespaces/{namespace}/views/{view}"
     }
 ]
+""")
 
 SPECS = {t["name"]: t for t in TOOLS}
 
