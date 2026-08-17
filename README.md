@@ -70,6 +70,33 @@ python3 bench.py --quick   # small specs only
 Scores are not comparable across suite versions — adding a task bumps the
 version and starts a new baseline.
 
+## Coverage over the public API universe
+
+`bench.py` answers "did I break anything?". It cannot answer "what fraction of
+real third-party APIs does this digest unattended?" — `corpus_run.py` does.
+
+Seeded random sample of **250** of the **2,529** provider/API pairs indexed by
+[apis.guru](https://apis.guru), each taken fetch → generate → schema smoke:
+
+| | |
+|---|---|
+| Delivered | **245 / 250 — 98.0%** |
+| OpenAPI 3.x | 151 / 152 |
+| Swagger 2.0 | 94 / 95 |
+| Median wall | 2.6s per spec |
+
+**Schema-level only.** There are no credentials for 250 third-party APIs, so
+`--call` was never run: a pass means the tool surface is well-formed and the
+server answers `initialize` + `tools/list`, not that live requests succeed.
+
+All five failures are named and attributed in [`bench/CORPUS.md`](bench/CORPUS.md)
+— including the two that were this harness's own URL-encoding bug rather than a
+problem with the spec. Run id `2026-08-17_s17n250`; records are in `bench/`.
+
+```bash
+python3 corpus_run.py --n 250 --seed 17 --jobs 8
+```
+
 ## Example: OWASP Dependency-Track
 
 ```bash
