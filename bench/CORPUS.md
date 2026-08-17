@@ -51,7 +51,7 @@ because three of the five are **not** generator defects.
 |---|---|---|---|
 | 1 | `microsoft.com:graph-beta` (26,214,401 B) | `too_large` | **Harness policy.** `MAX_BYTES` is 25 MB. Graph-beta is 26 MB. Not a parse failure — a deliberate cap. |
 | 2 | `adyen.com:BalancePlatformReportNotification-v1` | `no_operations` | **Correct behaviour.** A webhook *notification* schema: 0 paths, no operations to expose. There is nothing to generate. |
-| 3 | `azure.com:containerservice-containerService:2017-07-01` | `no_operations` | **Genuine gap.** 11 paths present, 0 operations matched. A 2017-era Azure ARM swagger; worth a follow-up. |
+| 3 | `azure.com:containerservice-containerService:2017-07-01` | `no_operations` | **Correct behaviour — diagnosed after the run.** 3 paths, 5 operations, and Microsoft marks **every one of them `deprecated: true`**. The generator skips deprecated operations by design, so the surface is legitimately empty. |
 | 4 | `azure.com:cognitiveservices-LUIS-Runtime:v2.0 preview` | `fetch_error` | **Harness defect — FIXED (P14).** The URL contains a raw space; `urllib` raised `InvalidURL` before any byte was fetched. |
 | 5 | `nordigen.com:2.0 (v2)` | `fetch_error` | **Harness defect — FIXED (P14).** Same cause. |
 
@@ -73,6 +73,20 @@ luis:     rc=0  POST /{appId} -> prediction_resolve      smoke rc=0
 nordigen: rc=0  GET  /api/v2/institutions/ -> …          smoke rc=0
 ```
 
+### Why the third `no_operations` is not a defect
+
+The survey recorded `paths=11` for that spec, which is what made it look like a
+gap. That figure comes from a cheap regex counter (`spec_version()` counts `"/`
+occurrences) and it over-counts; the spec really has **3 paths / 5 operations**.
+Every operation carries `deprecated: true` — it is the 2017 Azure ARM
+`containerServices` API, superseded by AKS — and `extract_tools()` skips
+deprecated operations deliberately. Generating an agent tool surface over an API
+Microsoft has marked dead is the wrong output, so the empty result is right.
+
+Worth stating plainly because it cuts the other way in a paid job: if a client's
+spec is fully deprecated, the correct answer is "there is nothing here to
+expose", not eight tools that will be withdrawn.
+
 ### What may honestly be claimed
 
 - **The recorded run is 245/250 (98.0%).** That is the number in the summary
@@ -80,9 +94,10 @@ nordigen: rc=0  GET  /api/v2/institutions/ -> …          smoke rc=0
 - Two of the five failures are fixed and individually verified, so a re-run at
   the same seed should score 247/250 — but that run has not happened, and an
   un-run number is not evidence (P7/P11). It is not quoted anywhere public.
-- Of the five, **at most one** (`azure containerservice 2017-07-01`) is an
-  unexplained generator gap. One is a size cap, one is a spec with no operations
-  by design, two were URL encoding.
+- **None of the five is an unexplained generator defect.** One is a size cap
+  (26 MB > the 25 MB limit), two are specs with no exposable operations by
+  design (a webhook notification schema; a fully-deprecated API), and two were
+  URL encoding in my own fetch path, now fixed.
 
 ---
 
