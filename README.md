@@ -52,8 +52,13 @@ Emits into `--out`:
 | box | JSON | 1.7 MB | 8 | PASS |
 | dependency-track | YAML, multi-file | 10 KB entry | 8 | PASS |
 
-**7/7, median 1.3s.** OpenAI's 3 MB YAML spec also generates 8 tools and passes
-smoke in 5.2s (not in the suite).
+**7/7 delivered, median 2.3s** — suite v2, run 3, 2026-08-17, the current
+recorded baseline in `bench/`. Wall time here measures the harness and the
+network rather than the generator: `dependency-track` alone spends ~30 sequential
+HTTPS fetches resolving external `$ref`s, and its wall time has ranged 24–40s
+across runs under identical code. Treat delivered/total as the score and time as
+a tripwire only when the code changed. OpenAI's 3 MB YAML spec also generates 8
+tools and passes smoke in 5.2s (not in the suite).
 
 Run it:
 
