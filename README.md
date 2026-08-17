@@ -36,6 +36,12 @@ Emits into `--out`:
   instead of taking the first N alphabetically.
 - **Reads before writes.** Tools are ordered GET → POST → PUT → PATCH → DELETE,
   so a capped run gives you a safe read-only surface by default.
+- **Deprecated operations are skipped** — an agent should not be handed a
+  retired endpoint by default. `--include-deprecated` exposes them anyway.
+- **Says why when it emits nothing.** A spec with no callable operations is
+  reported as what it actually is — a webhook/notification contract, a
+  schema-only document, an all-`deprecated` API, or an over-tight `--include`
+  — rather than a generic "no operations matched".
 
 ## Benchmark
 
