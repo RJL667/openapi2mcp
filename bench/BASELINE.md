@@ -9,7 +9,50 @@ that quietly stops measuring what the work actually is.
 
 ---
 
-## Suite v2 — CURRENT KNOWN-GOOD
+## Suite v3 — CURRENT KNOWN-GOOD
+
+v3 = v2's seven tasks **plus `wikimedia`**, a Swagger 2.0 document, **plus a
+base-URL assertion** (`EXPECTED_BASE`) on the two tasks whose base the smoke test
+structurally cannot see. Scores are NOT comparable with v2.
+
+### Run 15 (v3) — 2026-08-17 — CURRENT — after the P22 harness-input fix
+
+**SCORE 1.00 (8/8 delivered) · median 0.8s.** `petstore` base
+`https://petstore3.swagger.io/api/v3`, `wikimedia` base
+`https://wikimedia.org/api/rest_v1` — both asserted, both correct.
+
+### Run 14 (v3) — 2026-08-17 — 0.875 (7/8) — THE MEASUREMENT WAS WRONG, NOT THE SUBJECT
+
+The only non-1.00 run in fifteen. `petstore` failed the base assertion: expected
+`https://petstore3.swagger.io/api/v3`, got `http://localhost:8000/api/v3`.
+
+The generator was right and the harness was wrong. `bench.py` downloaded each
+spec once and handed the generator the **local temp copy**; petstore's
+`servers[0].url` is the relative `/api/v3`, which means *the origin this document
+was served from*, and a temp file has no origin — so the localhost placeholder
+was the correct output for the input it was given. A paying client hands over a
+**URL** (P2 step 1), never a detached copy. Fixed by extending `REMOTE_ONLY` to
+cover every task carrying a base assertion; see PLAYBOOK **P22**.
+
+**The row stays in `history.jsonl`.** A suite that has only ever recorded 1.00 is
+not a ratchet that held — it is a ratchet nobody has stressed. Erasing the one
+red row would destroy the only evidence the assertion can fire at all.
+
+### Why v3 exists — what v2's twelve green runs were NOT evidence of
+
+Every task in v2 is an OpenAPI 3.x document with a `servers` block, so **no run
+of v2 could ever fail on the P20 bug**: Swagger 2.0 has no `servers` at all
+(`schemes` + `host` + `basePath`), that path was unread, and 201 of the 493
+surveyed specs — 40.8% — generated a server pointing at `http://localhost:8000`.
+Twelve consecutive 1.00s said nothing about 40.8% of the corpus.
+
+So v3 carries one task per population, and asserts the base URL rather than
+trusting the schema smoke — which passes happily against localhost. That is the
+rule in PLAYBOOK P20: **the suite cannot fail on a shape it does not contain.**
+
+---
+
+## Suite v2 — SUPERSEDED by v3 (kept: 10 runs, all 1.00)
 
 ### Run 5 (v2) — 2026-08-17 — ratchet re-run after the P14 URL-encoding change
 
@@ -166,6 +209,13 @@ This file plus `history.jsonl` is the known-good configuration. Any change to
 `openapi2mcp.py` re-runs the suite before it is kept. A drop in score, or a median
 time that rises for reasons other than a new task, is a rollback trigger — not a
 debugging session on live code.
+
+**One exception, earned the hard way (P22).** Before rolling back on a red row,
+read what the harness fed the subject. Run 14's failure was the suite handing the
+generator an input shape no client ever sends; rolling the generator back would
+have reverted a correct fix to satisfy a broken measurement. Check the input
+first, then the subject — and if the harness was wrong, the harness is what gets
+fixed.
 
 ## Spend authorisation status
 

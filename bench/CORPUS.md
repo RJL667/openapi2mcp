@@ -20,6 +20,16 @@ digest unattended?". This survey answers that, and only that.
 > scored 1.00 on a generator whose every live call raised `unknown url type`
 > (`BASELINE.md`), and the paid offer's acceptance test is a live demo.
 
+**Third proof of that caveat, found 2026-08-17 (PLAYBOOK P20).** Every Swagger
+2.0 spec in this survey — **201 of the 493 delivered, 40.8%** — generated a server
+whose base URL was the `http://localhost:8000` placeholder, because `base_url()`
+read only OpenAPI 3's `servers` block and 2.0 puts the base in `schemes` + `host`
++ `basePath`. All 201 passed here, and every one of them would have failed at the
+first live call with `Name or service not known`. Fixed in the generator; the
+delivered counts below are unchanged and still correct **as schema-level
+measurements**, which is exactly the point of the caveat: a green row in this
+table has never proved that a request leaves the machine.
+
 ---
 
 ## Headline
