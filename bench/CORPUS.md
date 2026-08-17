@@ -50,7 +50,7 @@ because three of the five are **not** generator defects.
 | # | Spec | Class | Attribution |
 |---|---|---|---|
 | 1 | `microsoft.com:graph-beta` (26,214,401 B) | `too_large` | **Harness policy.** `MAX_BYTES` is 25 MB. Graph-beta is 26 MB. Not a parse failure — a deliberate cap. |
-| 2 | `adyen.com:BalancePlatformReportNotification-v1` | `no_operations` | **Correct behaviour.** A webhook *notification* schema: 0 paths, no operations to expose. There is nothing to generate. |
+| 2 | `adyen.com:BalancePlatformReportNotification-v1` | `no_operations` | **Correct behaviour — verified.** A webhook *notification* schema: 0 paths, no operations to expose. There is nothing to generate. |
 | 3 | `azure.com:containerservice-containerService:2017-07-01` | `no_operations` | **Correct behaviour — diagnosed after the run.** 3 paths, 5 operations, and Microsoft marks **every one of them `deprecated: true`**. The generator skips deprecated operations by design, so the surface is legitimately empty. |
 | 4 | `azure.com:cognitiveservices-LUIS-Runtime:v2.0 preview` | `fetch_error` | **Harness defect — FIXED (P14).** The URL contains a raw space; `urllib` raised `InvalidURL` before any byte was fetched. |
 | 5 | `nordigen.com:2.0 (v2)` | `fetch_error` | **Harness defect — FIXED (P14).** Same cause. |
