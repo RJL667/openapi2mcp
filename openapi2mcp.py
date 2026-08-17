@@ -208,22 +208,42 @@ def json_schema_for(op: JSON, path_params: list[JSON]) -> tuple[JSON, list[str]]
     return {"type": "object", "properties": props, "required": required}, required
 
 
-def extract_tools(spec: JSON, include: str | None, max_tools: int) -> list[JSON]:
+def extract_tools(spec: JSON, include: str | None, max_tools: int,
+                  include_deprecated: bool = False) -> tuple[list[JSON], JSON]:
+    """Return (tools, stats).
+
+    `stats` exists so an EMPTY result can be EXPLAINED rather than reported as
+    "no operations matched". The corpus survey (bench/CORPUS.md) produced three
+    distinct zero-tool causes that all printed that one sentence: a spec whose
+    every operation is `deprecated` (azure containerservice 2017-07-01), a
+    webhook-notification contract with no callable paths (Adyen ×2), and a
+    genuine filter miss. Telling a client "your spec has 5 operations, all
+    marked deprecated — re-run with --include-deprecated" is a different
+    conversation from "your spec doesn't work here".
+    """
     spec = deref(spec, spec)
     tools: list[JSON] = []
+    stats: JSON = {"paths": 0, "operations": 0, "deprecated": 0,
+                   "filtered_out": 0,
+                   "webhooks": len(spec.get("webhooks") or {})}
     pat = re.compile(include, re.I) if include else None
     for path, item in (spec.get("paths") or {}).items():
         if not isinstance(item, dict):
             continue
+        stats["paths"] += 1
         shared = [p for p in (item.get("parameters") or []) if isinstance(p, dict)]
         for method in VERBS:
             op = item.get(method)
             if not isinstance(op, dict):
                 continue
+            stats["operations"] += 1
             if op.get("deprecated"):
-                continue
+                stats["deprecated"] += 1
+                if not include_deprecated:
+                    continue
             hay = f"{path} {op.get('operationId','')} {op.get('summary','')} {' '.join(op.get('tags') or [])}"
             if pat and not pat.search(hay):
+                stats["filtered_out"] += 1
                 continue
             schema, _ = json_schema_for(op, shared)
             desc = (op.get("summary") or op.get("description") or f"{method.upper()} {path}").strip()
@@ -249,7 +269,30 @@ def extract_tools(spec: JSON, include: str | None, max_tools: int) -> list[JSON]
         t["name"] = n
         seen.add(n)
         unique.append(t)
-    return unique[:max_tools]
+    return unique[:max_tools], stats
+
+
+def explain_empty(stats: JSON, include: str | None) -> str:
+    """Say WHY zero tools came out: one line, actionable, no blame-shifting."""
+    if stats["operations"] == 0:
+        if stats["webhooks"]:
+            return (f"this spec declares {stats['webhooks']} webhook definition(s) "
+                    f"and 0 callable operations — it is a notification contract, "
+                    f"so there is nothing for an agent to invoke.")
+        return ("this spec declares 0 operations (no `paths` entry carries a "
+                "GET/POST/PUT/PATCH/DELETE) — check that this is the API spec "
+                "and not an index, a schema-only document, or a webhook contract.")
+    if stats["deprecated"] == stats["operations"]:
+        return (f"all {stats['operations']} operations in this spec are marked "
+                f"`deprecated`, and deprecated operations are skipped by default. "
+                f"Re-run with --include-deprecated to expose them anyway.")
+    if include and stats["filtered_out"]:
+        extra = f", {stats['deprecated']} deprecated" if stats["deprecated"] else ""
+        return (f"{stats['operations']} operations found, none matched "
+                f"--include {include!r} ({stats['filtered_out']} filtered out"
+                f"{extra}). Loosen the regex.")
+    return (f"{stats['operations']} operations found, none survived filtering "
+            f"({stats['deprecated']} deprecated, {stats['filtered_out']} filtered).")
 
 
 def base_url(spec: JSON, override: str | None, spec_src: str = "") -> str:
@@ -532,15 +575,18 @@ def main() -> None:
     ap.add_argument("--out", default="./build")
     ap.add_argument("--max-tools", type=int, default=8)
     ap.add_argument("--include", default=None, help="regex filter on path/tag/operationId")
+    ap.add_argument("--include-deprecated", action="store_true",
+                    help="expose operations marked deprecated (skipped by default)")
     ap.add_argument("--base-url", default=None)
     ap.add_argument("--ref-base", default=None,
                     help="resolve external $refs against this URL/path (default: --spec)")
     args = ap.parse_args()
 
     spec = inline_external(load_spec(args.spec), args.ref_base or args.spec)
-    tools = extract_tools(spec, args.include, args.max_tools)
+    tools, stats = extract_tools(spec, args.include, args.max_tools,
+                                 args.include_deprecated)
     if not tools:
-        sys.exit("no operations matched — loosen --include or check the spec")
+        sys.exit("no tools generated: " + explain_empty(stats, args.include))
     base = base_url(spec, args.base_url, args.spec)
     server = generate(spec, args.name, Path(args.out), tools, base, args.spec)
 

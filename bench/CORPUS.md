@@ -180,3 +180,55 @@ to requote a job.
 
 Records: `bench/corpus_2026-08-17_s23n250.jsonl` / `.json` (run id
 `2026-08-17_s23n250`).
+
+---
+
+## What the survey changed in the tool
+
+A coverage number whose failures are only *counted* teaches nothing. Every
+`no_operations` row in the 500 specs was read by hand, and each had a different
+cause that the generator reported with one generic string
+(`no operations matched — loosen --include or check the spec`). A client handed
+that reads it as "your tool is broken".
+
+`extract_tools` now counts what it saw (paths, operations, deprecated, filtered,
+webhooks) and `main` reports the actual reason:
+
+| Real spec from the survey | What it now says |
+|---|---|
+| `adyen.com:BalancePlatformReportNotification-v1` (0 paths, 1 webhook) | "declares 1 webhook definition(s) and 0 callable operations — it is a notification contract, so there is nothing for an agent to invoke" |
+| `adyen.com:BalancePlatformTransferNotification-v3` (0 paths, 2 webhooks) | same, 2 webhooks |
+| `googleapis.com:youtubeAnalytics:v1` (0 paths, no webhooks) | "declares 0 operations (no `paths` entry carries a GET/POST/PUT/PATCH/DELETE) — check that this is the API spec and not an index, a schema-only document, or a webhook contract" |
+| `azure.com:containerservice-containerService:2017-07-01` (5 ops, **all** `deprecated: true`) | "all 5 operations in this spec are marked `deprecated`, and deprecated operations are skipped by default. Re-run with `--include-deprecated` to expose them anyway." |
+
+`--include-deprecated` is new, and verified on that Azure spec: 5 tools
+generated, schema smoke passes. The default (skip deprecated) is unchanged and
+still correct — a deprecated operation is not one an agent should be handed by
+default.
+
+Ratchet re-run after the change: **suite v2, 7/7, score 1.00, median 2.2s**
+(`bench/history.jsonl`, 2026-08-17T22:14:12Z). No regression.
+
+---
+
+## Diagnostics: every `no_operations` row now states its own cause
+
+`no operations matched — loosen --include or check the spec` was the same message
+for four structurally different situations, and a client who reads it concludes the
+tool is broken. Each of the four now names itself, verified against the real specs
+from this survey:
+
+| Situation | What the generator now says | Verified on |
+|---|---|---|
+| Webhook/notification contract | "declares N webhook definition(s) and 0 callable operations — a notification contract, so there is nothing for an agent to invoke" | `adyen.com:BalancePlatformReportNotification-v1` (1), `adyen.com:BalancePlatformTransferNotification-v3` (2) |
+| Every operation deprecated | "all N operations in this spec are marked `deprecated`, and deprecated operations are skipped by default. Re-run with `--include-deprecated`" | `azure.com:containerservice-containerService:2017-07-01` (5/5 deprecated) |
+| No method keys under any path | "0 operations (no `paths` entry carries a GET/POST/PUT/PATCH/DELETE) — check that this is the API spec and not an index, a schema-only document, or a webhook contract" | `googleapis.com:youtubeAnalytics:v1` |
+| `--include` filtered everything out | "N operations found, none matched --include `<pattern>` (M filtered out, K deprecated)" | — |
+
+`--include-deprecated` was added with it: on the Azure spec it generates the 5
+tools and passes smoke, so a deliberately-frozen API is reachable when the client
+asks for it rather than reading as an unsupported spec.
+
+This changes no survey number. All four outcomes were correct before; only the
+explanation was missing. Ratchet re-run after the change: **suite v2, 7/7, score
+1.00, median 2.2s** — no regression.
