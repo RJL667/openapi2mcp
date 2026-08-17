@@ -31,6 +31,20 @@ from typing import Any
 
 JSON = dict[str, Any]
 
+# P21: hosts that SERVE SPEC FILES but never serve the API they describe. A
+# relative or unresolved server url must NOT be pasted onto one of these — that
+# is how `https://raw.githubusercontent.com/{scheme}://{host}{basePath}` was
+# emitted as a base URL. Prefer an obvious localhost placeholder the client
+# overrides over a confidently wrong host that dies at the first live call.
+CODE_HOSTS = (
+    "raw.githubusercontent.com",
+    "github.com",
+    "gist.githubusercontent.com",
+    "gitlab.com",
+    "bitbucket.org",
+    "api.apis.guru",
+)
+
 # ---------------------------------------------------------------- spec loading
 
 
@@ -315,6 +329,22 @@ def base_url(spec: JSON, override: str | None, spec_src: str = "") -> str:
     if servers and isinstance(servers[0], dict) and servers[0].get("url"):
         raw = str(servers[0]["url"]).strip()
 
+        # P21: an OpenAPI 3 server url may be a TEMPLATE — lakekeeper ships
+        # "{scheme}://{host}{basePath}" — whose values live in
+        # `variables[<name>].default`. Emitted verbatim it is not a URL at all,
+        # and the relative-url branch below then pasted it onto the spec's own
+        # origin: "https://raw.githubusercontent.com/{scheme}://{host}{basePath}".
+        # Substitute the declared defaults; if anything is still unresolved,
+        # refuse the value — an obvious placeholder the client overrides beats a
+        # wrong host that fails at the first live call.
+        variables = servers[0].get("variables")
+        if isinstance(variables, dict):
+            for var, meta in variables.items():
+                if isinstance(meta, dict) and meta.get("default") is not None:
+                    raw = raw.replace("{%s}" % var, str(meta["default"]))
+        if "{" in raw or "}" in raw:
+            raw = ""
+
     # P20: SWAGGER 2.0 HAS NO `servers`. The base is `schemes` + `host` +
     # `basePath`, three separate top-level keys. Reading only `servers` left
     # every 2.0 delivery pointing at the localhost placeholder — 40.8% of the
@@ -335,8 +365,21 @@ def base_url(spec: JSON, override: str | None, spec_src: str = "") -> str:
             # relative OpenAPI 3 server url, handled immediately below.
             raw = base_path
 
+    origin = urllib.parse.urlsplit(spec_src).netloc.lower() if spec_src else ""
+    code_host = any(origin == h or origin.endswith("." + h) for h in CODE_HOSTS)
+
+    # P21: no usable server information at all (no `servers`, no 2.0 host, or a
+    # template that did not resolve). If the spec was fetched from the API's own
+    # origin — posthog's schema lives at app.posthog.com/api/schema — that origin
+    # IS the base, and emitting localhost instead ships a server that cannot call
+    # anything. Never do this from a CODE_HOST: a spec on raw.githubusercontent
+    # says nothing about where the API runs.
+    if not raw and re.match(r"^https?://", spec_src) and not code_host:
+        parts = urllib.parse.urlsplit(spec_src)
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
+
     if raw and not re.match(r"^https?://", raw):
-        if re.match(r"^https?://", spec_src):
+        if re.match(r"^https?://", spec_src) and not code_host:
             parts = urllib.parse.urlsplit(spec_src)
             raw = urllib.parse.urlunsplit(
                 (parts.scheme, parts.netloc, raw if raw.startswith("/") else "/" + raw, "", "")
