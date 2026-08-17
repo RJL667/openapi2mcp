@@ -89,15 +89,25 @@ expose", not eight tools that will be withdrawn.
 
 ### What may honestly be claimed
 
-- **The recorded run is 245/250 (98.0%).** That is the number in the summary
-  file and the only one traceable to a complete record set. Quote this.
-- Two of the five failures are fixed and individually verified, so a re-run at
-  the same seed should score 247/250 — but that run has not happened, and an
-  un-run number is not evidence (P7/P11). It is not quoted anywhere public.
-- **None of the five is an unexplained generator defect.** One is a size cap
-  (26 MB > the 25 MB limit), two are specs with no exposable operations by
-  design (a webhook notification schema; a fully-deprecated API), and two were
-  URL encoding in my own fetch path, now fixed.
+**Superseded by the seed-23 replication below — this section is kept because it
+records what was quotable when only one sample existed.** The quotable figure is
+now the two-seed combined one, and it is the figure in `OFFERS.md` and the public
+README:
+
+- **Quote 493/500 — 98.6%**, naming both run ids. It is the union of two complete
+  record sets, each traceable to its own JSONL. Seed 17 alone (245/250, 98.0%)
+  remains true and citable; it is simply the weaker of the two claims now.
+- **Per distinct API: 470/477 = 98.5%.** The two samples overlap on 23 specs and
+  the runs agree on every one of them, so the combined figure is not inflated by
+  double-counting a spec that passes twice.
+- **No projected number is quoted anywhere.** The seed-17 fetch_error fixes were
+  never claimed as an improved seed-17 score (an un-run number is not evidence,
+  P7/P11); the fix is evidenced by seed 23 recording **zero** of that class in a
+  real run.
+- **None of the seven combined non-deliveries is an unexplained generator
+  defect.** One size cap (26 MB > the 25 MB limit), four specs with no exposable
+  operations by design (three 0-path documents, one fully-deprecated API), and
+  two URL-encoding faults in my own fetch path, since fixed.
 
 ---
 
@@ -135,9 +145,12 @@ nothing.
 This is an **inbound** asset. A published coverage number and a failure taxonomy
 over the public API universe are useful without any outbound pitch, and they need
 no attribution decision to exist. The ratchet (`bench.py`, suite v2, 7/7, score
-1.00, median 2.2s — **run 5, 2026-08-17**, the re-run that confirmed the P14
-encoding fix held) is unaffected by this file and remains the rollback trigger;
-this survey is a coverage measurement, not a score to optimise.
+1.00, median 1.4s — **run 10, 2026-08-17T23:01Z**, the latest of ten dated runs,
+all at 1.00, spanning the P14 encoding fix, the diagnostics change, the P16
+import fix and the `OPENAPI2MCP_HOME` change) is unaffected by this file and
+remains the rollback trigger; this survey is a coverage measurement, not a score
+to optimise. Read the current ratchet figure from `bench/latest.json`, never
+from this paragraph.
 
 ---
 
