@@ -11,6 +11,34 @@ that quietly stops measuring what the work actually is.
 
 ## Suite v2 — CURRENT KNOWN-GOOD
 
+### Run 5 (v2) — 2026-08-17 — ratchet re-run after the P14 URL-encoding change
+
+**SCORE 1.00 (7/7 delivered) · median 2.2s** — `deptrack` 40.6s.
+
+Change under test: `openapi2mcp.py` now percent-encodes path and query before
+every http(s) fetch (`_encode_url`). Score held at 1.00, so the change is KEPT.
+
+The suite could not have caught the bug it fixes — no task in v2 has a space in
+its spec URL. It was found by the CORPUS survey (`bench/CORPUS.md`), which is the
+point of having a wide, unfrozen measurement next to a narrow, frozen one: the
+ratchet proves nothing broke, the survey finds what the ratchet cannot see.
+
+Median 2.3s → 2.2s and `deptrack` 40.5s → 40.6s: host/network noise under
+near-identical code, not a signal.
+
+### Run 3 (v2) — 2026-08-17 — no change under test (ratchet re-run)
+
+**SCORE 1.00 (7/7 delivered) · median 2.3s** — `deptrack` 40.5s.
+
+Nothing was changed. This run exists to confirm the known-good configuration still
+holds after the batch-3 outreach work. Score held.
+
+Median rose 1.3s → 2.3s and `deptrack` 30.8s → 40.5s under *identical code*, which
+is host/network variance, not a regression — the same lesson recorded for v1: wall
+time on this bench measures the harness, not the generator. **Score is the ratchet;
+time is a tripwire only when the code changed.** A rollback triggered by someone
+else's network latency would be a rollback for nothing.
+
 ### Run 2 (v2) — 2026-08-17 — after the relative-base-URL fix
 
 **SCORE 1.00 (7/7 delivered) · median 1.3s** — `deptrack` 30.8s (sequential HTTPS
@@ -144,6 +172,6 @@ debugging session on live code.
 The measurement gate is **OPEN**: a benchmark exists, it is scored, today's result
 is recorded, and both bugs found in it are fixed and logged. Improvement spend is
 therefore *permitted* by the rules — and still **declined**, because I0 (prompt +
-procedure, R0) has not saturated: the current constraint is zero outreach, not
+procedure, R0) has not saturated: the current constraint is zero *replies* (8 comments live, 0 answers), not
 capability. Nothing above the free rung gets funded until a stream is earning and
 the ledger says capability is the bottleneck.

@@ -119,6 +119,7 @@ nothing.
 
 This is an **inbound** asset. A published coverage number and a failure taxonomy
 over the public API universe are useful without any outbound pitch, and they need
-no attribution decision to exist. The ratchet (`bench.py`, suite v2, 7/7, median
-2.3s, run 3) is unaffected by this file and remains the rollback trigger; this
-survey is a coverage measurement, not a score to optimise.
+no attribution decision to exist. The ratchet (`bench.py`, suite v2, 7/7, score
+1.00, median 2.2s — **run 5, 2026-08-17**, the re-run that confirmed the P14
+encoding fix held) is unaffected by this file and remains the rollback trigger;
+this survey is a coverage measurement, not a score to optimise.
