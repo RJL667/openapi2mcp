@@ -163,11 +163,16 @@ Two things this establishes that one run could not:
 1. **The P14 encoding fix held.** Seed 17 recorded two `fetch_error`s that were
    this harness's own unencoded-URL defect. Seed 23 records **zero** — the class
    is gone, not merely absent from a lucky sample.
-2. **Both seed-23 failures are the benign class.** `adyen.com:BalancePlatform`
-   `TransferNotification-v3` (a webhook *notification* schema) and
-   `googleapis.com:youtubeAnalytics:v1` (3,958 bytes) both have **0 paths** —
-   there is no operation to expose, so emitting nothing is correct. No new
-   failure mode appeared in a second 250-spec sample.
+2. **Both seed-23 failures are the benign class**, verified by reading each spec:
+   - `adyen.com:BalancePlatformTransferNotification-v3` — OpenAPI **3.1**,
+     `paths: 0`, `webhooks: 2`. It is a webhook *contract*: Adyen calls **you**.
+     There is no operation an agent can invoke, so emitting no tools is correct.
+     (3.1's `webhooks` block is deliberately not turned into tools — an inbound
+     callback is not a callable surface.)
+   - `googleapis.com:youtubeAnalytics:v1` — 3,958 bytes, `paths: 0`. A stub
+     document carrying `info`/`servers`/`tags` and no operations at all.
+
+No new failure mode appeared in a second 250-spec sample.
 
 Swagger 2.0 at 107/107 on the larger 2.0 share is worth keeping in view: a third
 to two-fifths of the live universe is still Swagger 2.0, and it is not a reason
