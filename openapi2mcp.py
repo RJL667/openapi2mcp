@@ -34,9 +34,33 @@ JSON = dict[str, Any]
 # ---------------------------------------------------------------- spec loading
 
 
+def _encode_url(uri: str) -> str:
+    """Percent-encode an http(s) URL's path and query.
+
+    P14: a spec URL containing a raw space makes urllib raise
+    `InvalidURL: URL can't contain control characters` BEFORE a single byte is
+    fetched. That reads as "the spec is unreachable" when it means "the URL was
+    never encoded". Real: 8 of apis.guru's 3,992 spec URLs carry spaces
+    (`.../cognitiveservices-LUIS-Runtime/v2.0 preview/swagger.json`,
+    `.../nordigen.com/2.0 (v2)/openapi.json`), and a client whose spec lives at a
+    versioned path with a space would hit exactly this in a paid job.
+
+    `%` is in every safe set so an already-encoded URL is not double-encoded.
+    """
+    parts = urllib.parse.urlsplit(uri)
+    return urllib.parse.urlunsplit((
+        parts.scheme,
+        parts.netloc,
+        urllib.parse.quote(parts.path, safe="/%:@&=+$,~()!*'"),
+        urllib.parse.quote(parts.query, safe="/%?:@&=+$,~()!*'"),
+        parts.fragment,
+    ))
+
+
 def _read_source(uri: str) -> str:
     if re.match(r"^https?://", uri):
-        req = urllib.request.Request(uri, headers={"User-Agent": "openapi2mcp"})
+        req = urllib.request.Request(_encode_url(uri),
+                                     headers={"User-Agent": "openapi2mcp"})
         return urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
     return Path(uri).read_text(encoding="utf-8")
 
