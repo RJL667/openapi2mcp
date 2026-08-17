@@ -1,0 +1,21 @@
+{
+ "date": "2026-08-17",
+ "seed": 23,
+ "n": 250,
+ "corpus_size": 2529,
+ "smoke_pass": 248,
+ "generated": 248,
+ "openapi3": {
+  "n": 143,
+  "pass": 141
+ },
+ "swagger2": {
+  "n": 107,
+  "pass": 107
+ },
+ "fail_classes": {
+  "no_operations": 2
+ },
+ "median_seconds": 3.0,
+ "note": "schema-level only \u2014 no credentials, so no --call. Coverage here means the tool surface is well-formed, not that live requests succeed."
+}

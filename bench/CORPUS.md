@@ -138,3 +138,40 @@ no attribution decision to exist. The ratchet (`bench.py`, suite v2, 7/7, score
 1.00, median 2.2s — **run 5, 2026-08-17**, the re-run that confirmed the P14
 encoding fix held) is unaffected by this file and remains the rollback trigger;
 this survey is a coverage measurement, not a score to optimise.
+
+---
+
+## Replication — independent sample, seed 23
+
+A single seeded sample measures the sample as much as the generator. Re-run with
+a different seed over the same 2,529-API pool; **23 specs overlap**, so the two
+samples are all but independent.
+
+| | seed 17 | **seed 23** |
+|---|---|---|
+| Delivered | 245 / 250 — 98.0% | **248 / 250 — 99.2%** |
+| OpenAPI 3.x | 151 / 152 | 141 / 143 |
+| Swagger 2.0 | 94 / 95 | **107 / 107** |
+| Median wall | 2.6s | 3.0s (p90 4.0s, max 5.5s) |
+| Servers at the 8-tool cap | 124 | 130 |
+| `fetch_error` | 2 (harness, since fixed) | **0** |
+
+**Combined: 493 / 500 — 98.6%.**
+
+Two things this establishes that one run could not:
+
+1. **The P14 encoding fix held.** Seed 17 recorded two `fetch_error`s that were
+   this harness's own unencoded-URL defect. Seed 23 records **zero** — the class
+   is gone, not merely absent from a lucky sample.
+2. **Both seed-23 failures are the benign class.** `adyen.com:BalancePlatform`
+   `TransferNotification-v3` (a webhook *notification* schema) and
+   `googleapis.com:youtubeAnalytics:v1` (3,958 bytes) both have **0 paths** —
+   there is no operation to expose, so emitting nothing is correct. No new
+   failure mode appeared in a second 250-spec sample.
+
+Swagger 2.0 at 107/107 on the larger 2.0 share is worth keeping in view: a third
+to two-fifths of the live universe is still Swagger 2.0, and it is not a reason
+to requote a job.
+
+Records: `bench/corpus_2026-08-17_s23n250.jsonl` / `.json` (run id
+`2026-08-17_s23n250`).

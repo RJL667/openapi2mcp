@@ -110,6 +110,8 @@ median 2.6s per spec. Run id `2026-08-17_s17n250`.
 > generated server survived `initialize` + `tools/list` + a per-tool schema
 > check — it does **not** mean live requests to that API succeed.
 
+Replicated on an independent sample (seed 23, 23 specs overlapping): **248 / 250 — 99.2%**, Swagger 2.0 107/107, zero fetch errors. **Combined 493 / 500 — 98.6%.**
+
 All five non-deliveries are named in [`bench/CORPUS.md`](bench/CORPUS.md), including
 the two that were defects in *this* tooling rather than in the specs (raw spaces in
 the spec URL made `urllib` raise `InvalidURL` before a byte was fetched; fixed, and
