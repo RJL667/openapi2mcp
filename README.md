@@ -46,7 +46,7 @@ Emits into `--out`:
 ## Benchmark
 
 `bench.py` is a fixed suite scored identically every run, appended to
-`bench/history.jsonl` with a date. Suite v2, 7 tasks:
+`bench/history.jsonl` with a date. Suite v3, 8 tasks:
 
 | spec | shape | size | tools | result |
 |---|---|---|---|---|
@@ -57,10 +57,19 @@ Emits into `--out`:
 | twilio | JSON | 1.8 MB | 8 | PASS |
 | box | JSON | 1.7 MB | 8 | PASS |
 | dependency-track | YAML, multi-file | 10 KB entry | 8 | PASS |
+| wikimedia | **Swagger 2.0** (`host`+`basePath`, no `servers`) | 1.2 MB | 8 | PASS |
 
-**7/7 delivered, median 1.4s** — suite v2, run 9, 2026-08-17, the current
-recorded baseline in `bench/`. Nine dated runs so far (3 on v1, 6 on v2), all
-7/7: no regression across the URL-encoding, diagnostics and import fixes. Wall time here measures the harness and the
+**8/8 delivered, median 0.8s** — suite v3, run 15, 2026-08-17, the current
+recorded baseline in `bench/`. Fifteen dated runs so far (3 on v1, 10 on v2,
+2 on v3): fourteen at 1.00 and **one red — run 14, 0.875**, kept deliberately.
+
+v3 = v2's seven tasks plus `wikimedia` (a Swagger 2.0 document) plus an
+`EXPECTED_BASE` assertion on the generated base URL, which the schema smoke test
+structurally cannot see. Both additions exist because v2 could not fail on them:
+every v2 task is an OpenAPI 3.x document with a `servers` block, so ten green v2
+runs were never evidence that Swagger 2.0 resolved its base correctly — and it
+did not. Run 14 is the assertion firing; run 15 is the fix. A suite that has only
+ever recorded 1.00 has not been stressed. Wall time here measures the harness and the
 network rather than the generator: `dependency-track` alone spends ~30 sequential
 HTTPS fetches resolving external `$ref`s, and its wall time has ranged 24–40s
 across runs under identical code. Treat delivered/total as the score and time as
