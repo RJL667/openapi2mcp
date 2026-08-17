@@ -314,6 +314,27 @@ def base_url(spec: JSON, override: str | None, spec_src: str = "") -> str:
     servers = spec.get("servers") or []
     if servers and isinstance(servers[0], dict) and servers[0].get("url"):
         raw = str(servers[0]["url"]).strip()
+
+    # P20: SWAGGER 2.0 HAS NO `servers`. The base is `schemes` + `host` +
+    # `basePath`, three separate top-level keys. Reading only `servers` left
+    # every 2.0 delivery pointing at the localhost placeholder — 40.8% of the
+    # surveyed corpus — and the schema smoke test passes on all of them.
+    if not raw and (spec.get("swagger") or spec.get("host") or spec.get("basePath")):
+        host = str(spec.get("host") or "").strip().strip("/")
+        base_path = str(spec.get("basePath") or "").strip()
+        if base_path and not base_path.startswith("/"):
+            base_path = "/" + base_path
+        if base_path == "/":
+            base_path = ""
+        schemes = [s for s in (spec.get("schemes") or []) if isinstance(s, str)]
+        scheme = "https" if ("https" in schemes or not schemes) else schemes[0]
+        if host:
+            raw = f"{scheme}://{host}{base_path}"
+        elif base_path:
+            # No host: same "resolve against the document's origin" case as a
+            # relative OpenAPI 3 server url, handled immediately below.
+            raw = base_path
+
     if raw and not re.match(r"^https?://", raw):
         if re.match(r"^https?://", spec_src):
             parts = urllib.parse.urlsplit(spec_src)
@@ -349,7 +370,11 @@ TOKEN = os.environ.get("{envvar}", "")
 AUTH_HEADER = os.environ.get("{envvar}_HEADER", "Authorization")
 AUTH_PREFIX = os.environ.get("{envvar}_PREFIX", "Bearer ")
 
-TOOLS = {tools_json}
+# P19: embedded as JSON and parsed at runtime, NOT as a Python literal. A schema
+# carrying a boolean/null (enum: [false, true], default: null) dumps as `false`/
+# `null`, which are not Python names — the server then dies at import with
+# `NameError: name 'false' is not defined` before it can answer a single request.
+TOOLS = json.loads({tools_json})
 
 SPECS = {{t["name"]: t for t in TOOLS}}
 
@@ -471,6 +496,10 @@ def main():
     live = "--call" in sys.argv
     out = rpc([{{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {{}}}},
                {{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}}])
+    if not out or "tools" not in (out[-1].get("result") or {{}}):
+        print("FAIL: the server did not answer tools/list. "
+              "Its stderr is above; the acceptance test has NOT passed.")
+        sys.exit(1)
     tools = out[-1]["result"]["tools"]
     print(f"initialize OK · {{len(tools)}} tools exposed")
     for t in tools:
@@ -536,6 +565,21 @@ Delivery is not complete until every box is ticked in front of the customer.
 """
 
 
+def tools_literal(tools: list[JSON]) -> str:
+    """Render the tool list as a Python expression that evaluates to the JSON.
+
+    P19: `json.dumps(...)` inlined directly into the template is NOT valid Python
+    whenever a schema contains `true`, `false` or `null` — which any spec with a
+    boolean enum or a null default produces. Emit the JSON as a raw triple-quoted
+    string parsed by `json.loads` at import; fall back to `repr` in the (only
+    theoretical) case that the document itself contains a triple quote.
+    """
+    doc = json.dumps(tools, indent=4)
+    if '"""' in doc:
+        return repr(doc)
+    return 'r"""\n' + doc + '\n"""'
+
+
 def generate(spec: JSON, name: str, out: Path, tools: list[JSON], base: str, spec_src: str) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     module = f"{re.sub(r'[^a-z0-9_]+', '_', name.lower())}_mcp_server"
@@ -547,7 +591,7 @@ def generate(spec: JSON, name: str, out: Path, tools: list[JSON], base: str, spe
     server_path.write_text(
         SERVER_TEMPLATE.format(
             title=title, module=module, envvar=envvar, baseenv=baseenv, base=base,
-            tools_json=json.dumps(tools, indent=4),
+            tools_json=tools_literal(tools),
         ),
         encoding="utf-8",
     )
