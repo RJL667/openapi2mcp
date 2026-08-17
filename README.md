@@ -97,6 +97,26 @@ problem with the spec. Run id `2026-08-17_s17n250`; records are in `bench/`.
 python3 corpus_run.py --n 250 --seed 17 --jobs 8
 ```
 
+## Coverage over the public API universe
+
+`corpus_run.py` runs the same pipeline over a seeded random sample of
+[apis.guru](https://apis.guru) — 2,529 real provider/API pairs, not a curated list.
+
+**245 / 250 delivered (98.0%)** · OpenAPI 3.x 151/152 · Swagger 2.0 94/95 ·
+median 2.6s per spec. Run id `2026-08-17_s17n250`.
+
+> **Schema-level only.** There are no credentials for 250 third-party APIs, so
+> `--call` was not run. A pass means the spec was fetched and parsed and the
+> generated server survived `initialize` + `tools/list` + a per-tool schema
+> check — it does **not** mean live requests to that API succeed.
+
+All five non-deliveries are named in [`bench/CORPUS.md`](bench/CORPUS.md), including
+the two that were defects in *this* tooling rather than in the specs (raw spaces in
+the spec URL made `urllib` raise `InvalidURL` before a byte was fetched; fixed, and
+both specs re-run individually). The other three: one 26 MB spec over the 25 MB
+harness cap, one webhook-notification schema with no operations by design, and one
+Azure API whose every operation is marked `deprecated`.
+
 ## Example: OWASP Dependency-Track
 
 ```bash
