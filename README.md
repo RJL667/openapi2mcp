@@ -58,8 +58,9 @@ Emits into `--out`:
 | box | JSON | 1.7 MB | 8 | PASS |
 | dependency-track | YAML, multi-file | 10 KB entry | 8 | PASS |
 
-**7/7 delivered, median 2.3s** — suite v2, run 3, 2026-08-17, the current
-recorded baseline in `bench/`. Wall time here measures the harness and the
+**7/7 delivered, median 1.4s** — suite v2, run 9, 2026-08-17, the current
+recorded baseline in `bench/`. Nine dated runs so far (3 on v1, 6 on v2), all
+7/7: no regression across the URL-encoding, diagnostics and import fixes. Wall time here measures the harness and the
 network rather than the generator: `dependency-track` alone spends ~30 sequential
 HTTPS fetches resolving external `$ref`s, and its wall time has ranged 24–40s
 across runs under identical code. Treat delivered/total as the score and time as
@@ -76,54 +77,41 @@ python3 bench.py --quick   # small specs only
 Scores are not comparable across suite versions — adding a task bumps the
 version and starts a new baseline.
 
-## Coverage over the public API universe
+## Python,2197,Add OAuth Support over the public API universe
 
 `bench.py` answers "did I break anything?". It cannot answer "what fraction of
-real third-party APIs does this digest unattended?" — `corpus_run.py` does.
+real third-party APIs does this digest unattended?" — `corpus_run.py` does. It
+runs the same pipeline (fetch → generate → schema smoke) over a seeded random
+sample of [apis.guru](https://apis.guru): 2,529 real provider/API pairs, not a
+curated list.
 
-Seeded random sample of **250** of the **2,529** provider/API pairs indexed by
-[apis.guru](https://apis.guru), each taken fetch → generate → schema smoke:
+| Run | Sample | Delivered | Median wall |
+|---|---|---|---|
+| seed 17 (`2026-08-17_s17n250`) | 250 | **245 — 98.0%** | 2.6s |
+| seed 23 (`2026-08-17_s23n250`, independent; 23 specs overlap) | 250 | **248 — 99.2%** | 3.0s |
+| **combined** | **500** | **493 — 98.6%** | — |
 
-| | |
-|---|---|
-| Delivered | **245 / 250 — 98.0%** |
-| OpenAPI 3.x | 151 / 152 |
-| Swagger 2.0 | 94 / 95 |
-| Median wall | 2.6s per spec |
+Across both samples: OpenAPI 3.x **292 / 295**, Swagger 2.0 **201 / 202**,
+477 distinct APIs covered.
 
-**Schema-level only.** There are no credentials for 250 third-party APIs, so
-`--call` was never run: a pass means the tool surface is well-formed and the
-server answers `initialize` + `tools/list`, not that live requests succeed.
-
-All five failures are named and attributed in [`bench/CORPUS.md`](bench/CORPUS.md)
-— including the two that were this harness's own URL-encoding bug rather than a
-problem with the spec. Run id `2026-08-17_s17n250`; records are in `bench/`.
-
-```bash
-python3 corpus_run.py --n 250 --seed 17 --jobs 8
-```
-
-## Coverage over the public API universe
-
-`corpus_run.py` runs the same pipeline over a seeded random sample of
-[apis.guru](https://apis.guru) — 2,529 real provider/API pairs, not a curated list.
-
-**245 / 250 delivered (98.0%)** · OpenAPI 3.x 151/152 · Swagger 2.0 94/95 ·
-median 2.6s per spec. Run id `2026-08-17_s17n250`.
-
-> **Schema-level only.** There are no credentials for 250 third-party APIs, so
+> **Schema-level only.** There are no credentials for 500 third-party APIs, so
 > `--call` was not run. A pass means the spec was fetched and parsed and the
 > generated server survived `initialize` + `tools/list` + a per-tool schema
 > check — it does **not** mean live requests to that API succeed.
 
-Replicated on an independent sample (seed 23, 23 specs overlapping): **248 / 250 — 99.2%**, Swagger 2.0 107/107, zero fetch errors. **Combined 493 / 500 — 98.6%.**
+All **seven** non-deliveries are named and attributed in
+[`bench/CORPUS.md`](bench/CORPUS.md), none unexplained:
 
-All five non-deliveries are named in [`bench/CORPUS.md`](bench/CORPUS.md), including
-the two that were defects in *this* tooling rather than in the specs (raw spaces in
-the spec URL made `urllib` raise `InvalidURL` before a byte was fetched; fixed, and
-both specs re-run individually). The other three: one 26 MB spec over the 25 MB
-harness cap, one webhook-notification schema with no operations by design, and one
-Azure API whose every operation is marked `deprecated`.
+| Cause | n | What it means |
+|---|---|---|
+| `fetch_error` — raw spaces in the spec URL | 2 | **A defect in this tooling, not the spec.** `urllib` raised `InvalidURL` before a byte moved; fixed, and seed 23 recorded zero fetch errors. |
+| `no_operations` — 0-path documents | 3 | Webhook/notification contracts and a stub: nothing invokable, by design. |
+| `no_operations` — every operation `deprecated` | 1 | Correct behaviour; `--include-deprecated` exposes them. |
+| `too_large` — 26 MB spec | 1 | Harness cap (25 MB), not a parse failure. |
+
+```bash
+python3 corpus_run.py --n 250 --seed 17 --jobs 8
+```
 
 ## Example: OWASP Dependency-Track
 
