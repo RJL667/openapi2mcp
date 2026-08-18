@@ -1,8 +1,24 @@
 # CORPUS SURVEY — coverage over the public API universe
 
-**Run id `2026-08-17_s17n250`** · seed 17 · n=250 drawn from **2,529** apis.guru
-provider/API pairs · records: `bench/corpus_2026-08-17_s17n250.jsonl` (250 rows,
-250 unique names) · summary: `corpus_2026-08-17_s17n250.json`
+**Three independent samples**, each n=250 drawn from the same **2,529** apis.guru
+provider/API pairs:
+
+| Run id | Seed | Delivered | Median wall |
+|---|---|---|---|
+| `2026-08-17_s17n250` | 17 | 245 / 250 — 98.0% | 2.6s |
+| `2026-08-17_s23n250` | 23 | 248 / 250 — 99.2% | 3.0s |
+| `2026-08-18_s31n250` | 31 | **249 / 250 — 99.6%** | 2.3s |
+| **combined (rows)** | — | **742 / 750 — 98.9%** | — |
+| **combined (distinct APIs)** | — | **674 / 682 — 98.8%** | — |
+
+Records: `bench/corpus_<run id>.jsonl` (250 rows each, 250 unique names each) ·
+summaries: `bench/corpus_<run id>.json`. The three samples overlap on 65 specs
+total (17∩23 = 23, 17∩31 = 26, 23∩31 = 22) and **agree on every overlapping
+spec — zero disagreements**, which is why the distinct-API figure is quoted
+alongside the row figure rather than instead of it (P19).
+
+Sections below that name only seed 17 or only seeds 17+23 are kept as written:
+they record what was quotable when that was all the evidence there was.
 
 ---
 
@@ -29,6 +45,26 @@ first live call with `Name or service not known`. Fixed in the generator; the
 delivered counts below are unchanged and still correct **as schema-level
 measurements**, which is exactly the point of the caveat: a green row in this
 table has never proved that a request leaves the machine.
+
+**Now measured rather than assumed (P23).** `corpus_run.py` records the resolved
+base URL of every delivered server and classifies it `usable` / `placeholder` /
+`templated` / `unreadable`. Seed 31 is the first run carrying it:
+
+| | seed 31 |
+|---|---|
+| Delivered | 249 / 250 |
+| **Delivered with a usable base** | **242 / 249 — 97.2%** |
+| `placeholder` (`http://localhost:8000`) | 7 |
+| `templated` / `unreadable` | 0 |
+
+The 7 placeholders are specs that genuinely carry no resolvable host —
+`influxdata.com:2.0.0`, `parliament.uk:erskine-may:v1`,
+`parliament.uk:lordsvotes:v1`, `gsmtasks.com:2.4.13`,
+`presalytics.io:story:0.3.1`, `wheretocredit.com:1.0`, `thetvdb.com:3.0.0` —
+six OpenAPI 3.x, one Swagger 2.0. That is the residue after the P20 fix, and it
+is the correct output for those documents: the client overrides one env var.
+Before the fix the same tally would have read **201 placeholders**, all of them
+Swagger 2.0, and no survey number would have shown it.
 
 ---
 
@@ -104,12 +140,15 @@ records what was quotable when only one sample existed.** The quotable figure is
 now the two-seed combined one, and it is the figure in `OFFERS.md` and the public
 README:
 
-- **Quote 493/500 — 98.6%**, naming both run ids. It is the union of two complete
-  record sets, each traceable to its own JSONL. Seed 17 alone (245/250, 98.0%)
-  remains true and citable; it is simply the weaker of the two claims now.
-- **Per distinct API: 470/477 = 98.5%.** The two samples overlap on 23 specs and
-  the runs agree on every one of them, so the combined figure is not inflated by
-  double-counting a spec that passes twice.
+- **Quote 742/750 — 98.9% across three seeds**, naming all three run ids, or
+  **674/682 = 98.8% per distinct API**. Earlier claims (493/500 two-seed, 245/250
+  seed 17 alone) remain true and citable; they are simply the weaker versions.
+- **Quote the base tally next to it.** Seed 31: **242 of 249 delivered servers
+  point at a real host (97.2%)**. "Delivered" on its own overstates what a buyer
+  gets — P23 exists because 201 of the original 493 pointed at localhost and no
+  published number said so.
+- **Zero disagreements on the 65 overlapping specs**, so the combined figure is
+  not inflated by double-counting a spec that passes twice.
 - **No projected number is quoted anywhere.** The seed-17 fetch_error fixes were
   never claimed as an improved seed-17 score (an un-run number is not evidence,
   P7/P11); the fix is evidenced by seed 23 recording **zero** of that class in a
@@ -154,10 +193,10 @@ nothing.
 
 This is an **inbound** asset. A published coverage number and a failure taxonomy
 over the public API universe are useful without any outbound pitch, and they need
-no attribution decision to exist. The ratchet (`bench.py`, suite v2, 7/7, score
-1.00, median 1.4s — **run 10, 2026-08-17T23:01Z**, the latest of ten dated runs,
-all at 1.00, spanning the P14 encoding fix, the diagnostics change, the P16
-import fix and the `OPENAPI2MCP_HOME` change) is unaffected by this file and
+no attribution decision to exist. The ratchet (`bench.py`, suite **v3**, 8/8,
+score 1.00, median 0.8s — **run 15**, the latest of fifteen dated runs, fourteen
+at 1.00 and one deliberate red row at 0.875 where the harness, not the subject,
+was wrong) is unaffected by this file and
 remains the rollback trigger; this survey is a coverage measurement, not a score
 to optimise. Read the current ratchet figure from `bench/latest.json`, never
 from this paragraph.
@@ -203,6 +242,40 @@ to requote a job.
 
 Records: `bench/corpus_2026-08-17_s23n250.jsonl` / `.json` (run id
 `2026-08-17_s23n250`).
+
+---
+
+## Third sample — seed 31, and the first run that measured the base URL
+
+Run id `2026-08-18_s31n250` · 250 rows · **249 delivered (99.6%)** · median 2.3s
+(p90 3.2s) · OpenAPI 3.x **159/159** · Swagger 2.0 **90/91** · specs >1 MB 9/9 ·
+specs >100 paths 5/5 · median spec 47 KB. Top providers: azure.com 69,
+amazonaws.com 27, apisetu.gov.in 23, googleapis.com 22.
+
+This run exists to answer one question the first two could not: **after the P20
+fix, do the generated servers point at the customer's API?** They do, for
+242 of 249 (97.2%) — including **89 of the 90 delivered Swagger 2.0 specs**, the
+population that was 0% usable before the fix. Swagger 2.0 at 90/91 delivered and
+89/90 usable is the direct replication of P20 on an unseen sample.
+
+**The single non-delivery is correct behaviour, and it exposed a classifier bug
+(P24).** `azure.com:visualstudio-Projects:2018-08-01-preview` has 4 operations,
+all `deprecated: true`. The generator said so precisely — *"all 4 operations in
+this spec are marked `deprecated` … re-run with `--include-deprecated`"* — but
+`corpus_run.py`'s fail classifier still matched the generator's OLD wording, so
+it filed the row as **`generate_error`**: a class that reads as an unexplained
+defect of mine. Two of my own components disagreed about what had happened, and
+the published one would have been the wrong one. The classifier now matches the
+stable `no tools generated:` prefix and sub-classifies on the stated cause
+(`no_operations_all_deprecated`, `_webhook_contract`, `_filtered`). Replayed
+against all eight recorded non-deliveries across the three runs: seven keep
+their stored class, and this row reclassifies to
+`no_operations_all_deprecated` — correct behaviour, correctly named.
+
+So across 750 rows there are **eight non-deliveries and still zero unexplained
+generator defects**: 1 size cap, 5 specs with nothing invokable by design
+(3 zero-path documents, 2 fully-deprecated APIs), 2 URL-encoding faults in my
+own fetch path, fixed under P14 and absent from both later runs.
 
 ---
 
