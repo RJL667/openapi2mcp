@@ -43,7 +43,25 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 GEN = HERE / "openapi2mcp.py"
-ROOT = Path(os.environ.get("OPENAPI2MCP_HOME", HERE))
+
+
+def _default_root() -> Path:
+    """Where `bench/` lives when OPENAPI2MCP_HOME is not set.
+
+    P26: in the PUBLISHED repo the suite sits at the root, so `HERE/bench` is
+    correct. In the working tree it sits at `<home>/assets/openapi2mcp/` while
+    the canonical history is `<home>/bench/history.jsonl` — so defaulting to
+    HERE there silently FORKED the measurement record into a second file, and
+    green runs went missing from the history the spend gate reads. Adopt an
+    EXISTING history two levels up; never create one there.
+    """
+    candidate = HERE.parent.parent
+    if (candidate / "bench" / "history.jsonl").exists():
+        return candidate
+    return HERE
+
+
+ROOT = Path(os.environ.get("OPENAPI2MCP_HOME", _default_root()))
 BENCH_DIR = ROOT / "bench"
 HISTORY = BENCH_DIR / "history.jsonl"
 

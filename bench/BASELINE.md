@@ -15,7 +15,15 @@ v3 = v2's seven tasks **plus `wikimedia`**, a Swagger 2.0 document, **plus a
 base-URL assertion** (`EXPECTED_BASE`) on the two tasks whose base the smoke test
 structurally cannot see. Scores are NOT comparable with v2.
 
-### Run 18 (v3) — 2026-08-18 — CURRENT — after the P25 auth-wiring change
+### Run 19 (v3) — 2026-08-18 — CURRENT — after the P26 history-path fix
+
+**SCORE 1.00 (8/8 delivered) · median 1.5s**, and — the point of the run —
+`appended -> /work/money/bench/history.jsonl`, the canonical file. The three
+runs before it had gone to a second history inside the assets tree; the suite now
+adopts an existing canonical history rather than creating one beside itself
+(PLAYBOOK P26). Nineteen runs, eighteen at 1.00.
+
+### Run 18 (v3) — 2026-08-18 — after the P25 auth-wiring change
 
 **SCORE 1.00 (8/8 delivered) · median 1.1s.** `petstore` and `wikimedia` bases
 both asserted and correct. The change under test rewires the generated server to
@@ -46,7 +54,7 @@ could.
 
 ### Run 14 (v3) — 2026-08-17 — 0.875 (7/8) — THE MEASUREMENT WAS WRONG, NOT THE SUBJECT
 
-The only non-1.00 run in eighteen. `petstore` failed the base assertion: expected
+The only non-1.00 run in nineteen. `petstore` failed the base assertion: expected
 `https://petstore3.swagger.io/api/v3`, got `http://localhost:8000/api/v3`.
 
 The generator was right and the harness was wrong. `bench.py` downloaded each
