@@ -144,12 +144,31 @@ def run_one(entry: dict) -> dict:
                          "--max-tools", str(MAX_TOOLS)], GEN_TIMEOUT)
         if code != 0:
             low = log.lower()
+            # P24: the generator's no-tool message was REWRITTEN to name its own
+            # cause, and this classifier still matched the OLD wording. Seed 31
+            # filed `azure.com:visualstudio-Projects` (4 operations, all
+            # `deprecated: true`) as `generate_error` — a class that reads as an
+            # unexplained defect — when it is the tool behaving exactly as
+            # designed. Match the STABLE prefix the generator always emits
+            # (`no tools generated:`) and sub-classify on the cause it states.
             if "timeout" in low:
                 cls = "generate_timeout"
             elif "pyyaml" in low:
                 cls = "yaml_unavailable"
-            elif "no operations" in low or "0 tools" in low:
-                cls = "no_operations"
+            elif ("no tools generated" in low or "no operations" in low
+                  or "0 tools" in low):
+                # Order matters: the FILTERED message names a deprecated count
+                # inside itself ("… (M filtered out, K deprecated)"), so a
+                # `deprecated` test placed first swallows it. Most specific
+                # phrase first, always.
+                if "none matched --include" in low:
+                    cls = "no_operations_filtered"
+                elif "webhook" in low:
+                    cls = "no_operations_webhook_contract"
+                elif "deprecated" in low:
+                    cls = "no_operations_all_deprecated"
+                else:
+                    cls = "no_operations"
             elif "yaml" in low or "json" in low and "decode" in low:
                 cls = "parse_error"
             else:
@@ -162,19 +181,6 @@ def run_one(entry: dict) -> dict:
         m = re.search(r"generated\s+(\d+)\s+tools", log)
         rec["tools"] = int(m.group(1)) if m else 0
 
-        # P20: record the BASE URL the generator resolved. A server pointed at
-        # the localhost placeholder passes every check in this harness and dies
-        # at the first live call with `Name or service not known` — so
-        # `delivered` is only honest when it is reported next to "and the base
-        # is usable". 201 of the first survey's 493 deliveries were placeholders
-        # and nothing here could see it.
-        server_py = out / "svy_mcp_server.py"
-        if server_py.exists():
-            mb = re.search(r'^BASE = os\.environ\.get\([^,]+,\s*"([^"]*)"',
-                           server_py.read_text(encoding="utf-8", errors="replace"),
-                           re.M)
-            rec["base"] = mb.group(1) if mb else ""
-            rec["base_placeholder"] = "localhost:8000" in rec["base"]
         if rec["tools"] < 1:
             rec.update(fail_class="no_operations", error=log.strip()[-160:],
                        seconds=round(time.time() - t0, 1))
@@ -304,9 +310,11 @@ def main() -> None:
             try:
                 r = f.result()
             except Exception as e:  # noqa: BLE001
+                # Must carry EVERY field the summary reads, or one harness
+                # error takes the whole run down at reporting time (P11).
                 r = dict(name=futs[f]["name"], url=futs[f]["url"],
                          spec_version="", bytes=0, paths=0, tools=0,
-                         generated=False, smoke=False,
+                         generated=False, smoke=False, base="", base_class="",
                          fail_class="harness_error", error=str(e)[:160],
                          seconds=0.0)
             recs.append(r)
@@ -348,10 +356,8 @@ def main() -> None:
         "fail_classes": dict(sorted(classes.items(), key=lambda kv: -kv[1])),
         # P20: delivered AND pointed at a real host. The gap between these two
         # numbers is the part of "coverage" a client would have found at their
-        # first live call, not at generation.
-        "delivered_usable_base": sum(1 for r in recs
-                                     if r["smoke"] and not r["base_placeholder"]),
-        "placeholder_base": sum(1 for r in recs if r["base_placeholder"]),
+        # first live call, not at generation. One key, one derivation — an
+        # earlier draft carried two names for the same tally (P19).
         "base_classes": dict(sorted(bases.items(), key=lambda kv: -kv[1])),
         "delivered_with_usable_base": usable,
         "median_seconds": (sorted(r["seconds"] for r in recs)[len(recs)//2]

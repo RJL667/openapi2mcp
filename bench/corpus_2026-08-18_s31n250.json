@@ -1,0 +1,27 @@
+{
+ "date": "2026-08-18",
+ "seed": 31,
+ "n": 250,
+ "corpus_size": 2529,
+ "smoke_pass": 249,
+ "generated": 249,
+ "openapi3": {
+  "n": 159,
+  "pass": 159
+ },
+ "swagger2": {
+  "n": 91,
+  "pass": 90
+ },
+ "fail_classes": {
+  "generate_error": 1
+ },
+ "base_classes": {
+  "usable": 242,
+  "placeholder": 7
+ },
+ "delivered_with_usable_base": 242,
+ "median_seconds": 2.3,
+ "note": "schema-level only \u2014 no credentials, so no --call. Coverage here means the tool surface is well-formed, not that live requests succeed.",
+ "derived_from": "record file; the run's own summary step died on a stale key (see PLAYBOOK P19/P23), records are intact"
+}
