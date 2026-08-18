@@ -117,7 +117,7 @@ REMOTE_ONLY = {"deptrack"}
 # generator. It was a defect of the measurement: OFFERS.md Offer 1 takes "your
 # OpenAPI spec or docs URL", so the URL is the input under test. The harness
 # still fetches each spec itself for the fetch/size record.
-SPEC_AS_URL = True | set(EXPECTED_BASE)
+SPEC_AS_URL = True
 
 # Requires PyYAML from v2 onward (JSON-only suites did not).
 MAX_TOOLS = 8

@@ -38,6 +38,15 @@ Emits into `--out`:
   so a capped run gives you a safe read-only surface by default.
 - **Deprecated operations are skipped** — an agent should not be handed a
   retired endpoint by default. `--include-deprecated` exposes them anyway.
+- **Auth read from the spec, not assumed.** The credential goes where the spec's
+  `securitySchemes` / `securityDefinitions` says it goes — header or **query
+  parameter**, under the declared name, with the right prefix (`Bearer `,
+  `Basic ` with base64, or none at all). APIs that require **two** credentials
+  (an api key plus a client id) get both wired. Measured over 200 delivered
+  specs from the coverage survey: a hard-coded `Authorization: Bearer` — what a
+  naive generator emits — is correct for only **82 of the 159 that declare a
+  scheme (52%)**; 7 of them put the key in a query parameter, which no header
+  override can reach.
 - **Says why when it emits nothing.** A spec with no callable operations is
   reported as what it actually is — a webhook/notification contract, a
   schema-only document, an all-`deprecated` API, or an over-tight `--include`
@@ -79,9 +88,25 @@ tools and passes smoke in 5.2s (not in the suite).
 Run it:
 
 ```bash
-python3 bench.py           # full suite
-python3 bench.py --quick   # small specs only
+python3 bench.py            # full suite
+python3 bench.py --quick    # small specs only
 ```
+
+### `auth_probe.py` — the check the suite structurally cannot do
+
+The smoke test asserts what a server *says about itself*; it never makes the
+server send a request, so it cannot see where a credential lands. `auth_probe.py`
+stands up a local echo server, points generated servers at it and asserts the
+bytes on the wire — http bearer, apiKey in a header, apiKey in a header *named*
+`Authorization`, apiKey in a **query parameter**, HTTP basic, and oauth2:
+
+```bash
+python3 auth_probe.py       # 6/6 place the credential where the spec declares it
+```
+
+It earned its keep immediately: the first run caught the generated server
+emitting `Authorization: Bearertok123` — a missing trailing space that every
+schema check accepts and every real API rejects with 401.
 
 Scores are not comparable across suite versions — adding a task bumps the
 version and starts a new baseline.

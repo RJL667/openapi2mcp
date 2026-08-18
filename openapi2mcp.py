@@ -392,6 +392,123 @@ def base_url(spec: JSON, override: str | None, spec_src: str = "") -> str:
     return (raw or "http://localhost:8000").rstrip("/")
 
 
+# ------------------------------------------------------------- auth wiring
+
+# P25: the generated server used to send `Authorization: Bearer <token>` for
+# EVERY API, regardless of what the spec declared. Measured over 200 delivered
+# specs from the three corpus samples, that default is correct for 82 of the 159
+# that declare a scheme (52%) and WRONG for 77: 38 want a different header name
+# (`Ocp-Apim-Subscription-Key`, `X-APISETU-APIKEY`, `x-api-key`, ...), 27 want
+# the right header with NO `Bearer ` prefix, 5 are HTTP Basic (base64), and 7
+# put the key in a QUERY PARAMETER, which no header override can reach. Same
+# defect class as P20/P21: every schema check passes and the first live call
+# fails with 401.
+AUTH_DEFAULT: JSON = {"in": "header", "name": "Authorization",
+                     "prefix": "Bearer ", "kind": "none declared"}
+
+
+def _lit(value: str) -> str:
+    """Make a spec-supplied string safe to embed in the generated source."""
+    return str(value).replace("\\", "").replace('"', "").replace("\n", " ").strip()
+
+
+def _scheme_shape(defn: JSON) -> JSON | None:
+    """Translate one declared security scheme into where the credential goes."""
+    kind = str(defn.get("type") or "").lower()
+    if kind == "apikey":
+        loc = str(defn.get("in") or "header").lower()
+        name = _lit(defn.get("name") or "")
+        if not name:
+            return None
+        if loc == "cookie":
+            return {"in": "header", "name": "Cookie", "prefix": name + "=",
+                    "kind": f"apiKey in cookie `{name}`"}
+        if loc not in ("header", "query"):
+            return None
+        return {"in": loc, "name": name, "prefix": "",
+                "kind": f"apiKey in {loc} `{name}`"}
+    if kind == "basic":  # Swagger 2.0 spelling
+        return {"in": "header", "name": "Authorization", "prefix": "Basic ",
+                "kind": "HTTP basic"}
+    if kind == "http":
+        # The scheme NAME is spec-supplied, so it gets sanitised; the separating
+        # space after it does NOT. `_lit` ends in `.strip()`, which silently ate
+        # the trailing space and shipped `Authorization: Bearertok123` — a header
+        # every schema check accepts and every real API rejects with 401.
+        # Sanitise the token, then build the prefix around it.
+        scheme = _lit(str(defn.get("scheme") or "bearer")).lower() or "bearer"
+        prefix = "Basic " if scheme == "basic" else scheme.title() + " "
+        return {"in": "header", "name": "Authorization", "prefix": prefix,
+                "kind": f"HTTP {scheme}"}
+    if kind in ("oauth2", "openidconnect"):
+        return {"in": "header", "name": "Authorization", "prefix": "Bearer ",
+                "kind": kind}
+    return None
+
+
+def _security_lists(spec: JSON):
+    """Yield each `security` requirement object: document level first, then ops.
+
+    Several scheme names inside ONE requirement object mean ALL of them are
+    required (apisetu.gov.in wants `X-APISETU-APIKEY` *and* `X-APISETU-CLIENTID`);
+    separate objects are alternatives, so the first one wins.
+    """
+    top = spec.get("security")
+    if isinstance(top, list):
+        for item in top:
+            if isinstance(item, dict) and item:
+                yield item
+    for pathitem in (spec.get("paths") or {}).values():
+        if not isinstance(pathitem, dict):
+            continue
+        for op in pathitem.values():
+            if not isinstance(op, dict):
+                continue
+            sec = op.get("security")
+            if isinstance(sec, list):
+                for item in sec:
+                    if isinstance(item, dict) and item:
+                        yield item
+
+
+def auth_config(spec: JSON) -> tuple[JSON, JSON | None, str]:
+    """Read the spec's declared auth and return (primary, secondary, note)."""
+    defs: JSON = {}
+    for key, val in (spec.get("securityDefinitions") or {}).items():   # 2.0
+        if isinstance(val, dict):
+            defs[key] = val
+    comps = spec.get("components")
+    if isinstance(comps, dict):                                        # 3.x
+        for key, val in (comps.get("securitySchemes") or {}).items():
+            if isinstance(val, dict):
+                defs[key] = val
+    if not defs:
+        return dict(AUTH_DEFAULT), None, (
+            "no security scheme declared in the spec - defaulting to "
+            "Authorization: Bearer $TOKEN")
+
+    names: list[str] = []
+    for req in _security_lists(spec):
+        cand = [n for n in req if n in defs]
+        if cand:
+            names = cand
+            break
+    if not names:
+        names = list(defs)[:1]
+
+    shapes = [s for s in (_scheme_shape(defs[n]) for n in names) if s]
+    if not shapes:
+        return dict(AUTH_DEFAULT), None, (
+            "declared scheme is not machine-placeable - defaulting to "
+            "Authorization: Bearer $TOKEN")
+    primary = shapes[0]
+    secondary = shapes[1] if len(shapes) > 1 else None
+    note = "read from the spec: " + primary["kind"]
+    if secondary:
+        note += " AND " + secondary["kind"]
+    return primary, secondary, _lit(note)
+
+
 # ------------------------------------------------------------ code generation
 
 SERVER_TEMPLATE = '''#!/usr/bin/env python3
@@ -401,6 +518,7 @@ Run:  python3 {module}.py
 Env:  {envvar}   bearer token / api key (optional)
       {baseenv}  override base URL (default {base})
 """
+import base64
 import json
 import os
 import sys
@@ -410,8 +528,15 @@ import urllib.request
 
 BASE = os.environ.get("{baseenv}", "{base}").rstrip("/")
 TOKEN = os.environ.get("{envvar}", "")
-AUTH_HEADER = os.environ.get("{envvar}_HEADER", "Authorization")
-AUTH_PREFIX = os.environ.get("{envvar}_PREFIX", "Bearer ")
+
+# Auth wiring, {auth_note}. Every part is overridable without editing this file.
+AUTH_IN = os.environ.get("{envvar}_IN", "{auth_in}")            # header | query
+AUTH_NAME = os.environ.get("{envvar}_HEADER", "{auth_name}")    # header/param name
+AUTH_PREFIX = os.environ.get("{envvar}_PREFIX", "{auth_prefix}")
+# Some APIs require TWO credentials (an api key plus a client id).
+TOKEN2 = os.environ.get("{envvar}_2", "")
+AUTH2_IN = os.environ.get("{envvar}_2_IN", "{auth2_in}")
+AUTH2_NAME = os.environ.get("{envvar}_2_HEADER", "{auth2_name}")
 
 # P19: embedded as JSON and parsed at runtime, NOT as a Python literal. A schema
 # carrying a boolean/null (enum: [false, true], default: null) dumps as `false`/
@@ -420,6 +545,29 @@ AUTH_PREFIX = os.environ.get("{envvar}_PREFIX", "Bearer ")
 TOOLS = json.loads({tools_json})
 
 SPECS = {{t["name"]: t for t in TOOLS}}
+
+
+def _apply_auth(headers, query):
+    """Put the credential where THIS spec says it goes.
+
+    Sending `Authorization: Bearer <token>` unconditionally is wrong for about
+    half of real APIs: many name a different header, many want the raw key with
+    no prefix, HTTP basic needs base64, and some take the key as a query
+    parameter — which no header override can reach.
+    """
+    if TOKEN:
+        if AUTH_IN == "query":
+            query[AUTH_NAME] = TOKEN
+        else:
+            value = TOKEN
+            if AUTH_PREFIX.strip().lower() == "basic" and ":" in value:
+                value = base64.b64encode(value.encode("utf-8")).decode("ascii")
+            headers[AUTH_NAME] = AUTH_PREFIX + value
+    if TOKEN2 and AUTH2_NAME:
+        if AUTH2_IN == "query":
+            query[AUTH2_NAME] = TOKEN2
+        else:
+            headers[AUTH2_NAME] = TOKEN2
 
 
 def _call_api(spec, args):
@@ -434,16 +582,16 @@ def _call_api(spec, args):
             path = path.replace(token, urllib.parse.quote(str(val), safe=""))
         else:
             query[key] = val
-    url = BASE + path
-    if query:
-        url += "?" + urllib.parse.urlencode(query, doseq=True)
     data = None
     headers = {{"Accept": "application/json", "User-Agent": "{module}/1.0"}}
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
-    if TOKEN:
-        headers[AUTH_HEADER] = AUTH_PREFIX + TOKEN
+    # Auth may add a QUERY parameter, so it runs before the URL is assembled.
+    _apply_auth(headers, query)
+    url = BASE + path
+    if query:
+        url += "?" + urllib.parse.urlencode(query, doseq=True)
     req = urllib.request.Request(url, data=data, headers=headers, method=spec["_method"])
     try:
         with urllib.request.urlopen(req, timeout=45) as resp:
@@ -630,11 +778,17 @@ def generate(spec: JSON, name: str, out: Path, tools: list[JSON], base: str, spe
     baseenv = f"{re.sub(r'[^A-Z0-9]+', '_', name.upper())}_BASE_URL"
     title = (spec.get("info") or {}).get("title") or name
 
+    primary, secondary, auth_note = auth_config(spec)
+
     server_path = out / f"{module}.py"
     server_path.write_text(
         SERVER_TEMPLATE.format(
             title=title, module=module, envvar=envvar, baseenv=baseenv, base=base,
             tools_json=tools_literal(tools),
+            auth_note=auth_note, auth_in=primary["in"], auth_name=primary["name"],
+            auth_prefix=primary["prefix"],
+            auth2_in=(secondary or {}).get("in", "header"),
+            auth2_name=(secondary or {}).get("name", ""),
         ),
         encoding="utf-8",
     )
@@ -649,6 +803,15 @@ def generate(spec: JSON, name: str, out: Path, tools: list[JSON], base: str, spe
             title=title, spec_src=spec_src, envvar=envvar, baseenv=baseenv, base=base,
             module=module, name=name, abs_server=str(server_path.resolve()),
             n=len(tools), tool_table=table,
+            auth_note=auth_note, auth_in=primary["in"], auth_name=primary["name"],
+            auth_prefix=primary["prefix"],
+            auth2_name=(secondary or {}).get("name", ""),
+            auth2_line=(
+                f'export {envvar}_2="<second credential>"   '
+                f'# this API also requires {(secondary or {}).get("name", "")}'
+                if secondary else
+                f'# {envvar}_2 is unused: this API declares a single credential'
+            ),
         ),
         encoding="utf-8",
     )

@@ -15,7 +15,30 @@ v3 = v2's seven tasks **plus `wikimedia`**, a Swagger 2.0 document, **plus a
 base-URL assertion** (`EXPECTED_BASE`) on the two tasks whose base the smoke test
 structurally cannot see. Scores are NOT comparable with v2.
 
-### Run 15 (v3) — 2026-08-17 — CURRENT — after the P22 harness-input fix
+### Run 18 (v3) — 2026-08-18 — CURRENT — after the P25 auth-wiring change
+
+**SCORE 1.00 (8/8 delivered) · median 1.1s.** `petstore` and `wikimedia` bases
+both asserted and correct. The change under test rewires the generated server to
+read each spec's declared security scheme instead of always sending
+`Authorization: Bearer $TOKEN`; the ratchet held at 8/8, so it is KEPT.
+
+**This suite could not have caught the bug the change fixes, and says so.** Every
+v3 task is schema-smoked, and a schema smoke never sends a credential anywhere —
+the same blindness as P20 (base URL) one layer up. So the evidence for P25 is a
+SEPARATE live-transport probe, `auth_probe.py`: a local echo server records the
+exact request line and headers each generated server actually sends, across six
+cases (http bearer, apiKey header, apiKey header *named* Authorization, apiKey in
+a QUERY param, HTTP basic, oauth2). **6/6 place the credential exactly where the
+spec declares it.**
+
+The probe earned its keep on the first run: 5/6, with `http bearer` emitting
+`Authorization: Bearertok123`. `_lit()` ends in `.strip()`, which ate the
+trailing space of the `"Bearer "` prefix — a header every schema check accepts
+and every real API rejects with 401. Sanitise the spec-supplied token, build the
+prefix around it. Nothing in the ratchet could see that; only bytes on the wire
+could.
+
+### Run 15 (v3) — 2026-08-17 — after the P22 harness-input fix
 
 **SCORE 1.00 (8/8 delivered) · median 0.8s.** `petstore` base
 `https://petstore3.swagger.io/api/v3`, `wikimedia` base
@@ -23,7 +46,7 @@ structurally cannot see. Scores are NOT comparable with v2.
 
 ### Run 14 (v3) — 2026-08-17 — 0.875 (7/8) — THE MEASUREMENT WAS WRONG, NOT THE SUBJECT
 
-The only non-1.00 run in fifteen. `petstore` failed the base assertion: expected
+The only non-1.00 run in eighteen. `petstore` failed the base assertion: expected
 `https://petstore3.swagger.io/api/v3`, got `http://localhost:8000/api/v3`.
 
 The generator was right and the harness was wrong. `bench.py` downloaded each
