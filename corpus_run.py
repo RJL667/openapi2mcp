@@ -112,7 +112,8 @@ def spec_version(raw: bytes) -> tuple[str, int]:
 def run_one(entry: dict) -> dict:
     rec = {"name": entry["name"], "url": entry["url"], "spec_version": "",
            "bytes": 0, "paths": 0, "tools": 0, "generated": False,
-           "smoke": False, "fail_class": "", "error": "", "seconds": 0.0}
+           "smoke": False, "base": "", "base_class": "",
+           "fail_class": "", "error": "", "seconds": 0.0}
     t0 = time.time()
 
     try:
@@ -160,10 +161,47 @@ def run_one(entry: dict) -> dict:
         rec["generated"] = True
         m = re.search(r"generated\s+(\d+)\s+tools", log)
         rec["tools"] = int(m.group(1)) if m else 0
+
+        # P20: record the BASE URL the generator resolved. A server pointed at
+        # the localhost placeholder passes every check in this harness and dies
+        # at the first live call with `Name or service not known` — so
+        # `delivered` is only honest when it is reported next to "and the base
+        # is usable". 201 of the first survey's 493 deliveries were placeholders
+        # and nothing here could see it.
+        server_py = out / "svy_mcp_server.py"
+        if server_py.exists():
+            mb = re.search(r'^BASE = os\.environ\.get\([^,]+,\s*"([^"]*)"',
+                           server_py.read_text(encoding="utf-8", errors="replace"),
+                           re.M)
+            rec["base"] = mb.group(1) if mb else ""
+            rec["base_placeholder"] = "localhost:8000" in rec["base"]
         if rec["tools"] < 1:
             rec.update(fail_class="no_operations", error=log.strip()[-160:],
                        seconds=round(time.time() - t0, 1))
             return rec
+
+        # P20/P23: RECORD THE GENERATED BASE URL. A schema-green server pointed
+        # at http://localhost:8000 passes every check below — `initialize`,
+        # `tools/list`, per-tool schema — and then fails on the client's first
+        # live call. That is exactly what happened to Swagger 2.0 specs
+        # (`schemes`+`host`+`basePath`, no `servers`) before P20: 201 of the 493
+        # "delivered" specs in the published runs carried a placeholder base and
+        # the survey could not see it, because it never looked. `delivered` is
+        # therefore reported WITH a base tally, not on its own.
+        server_py = out / "svy_mcp_server.py"
+        if server_py.exists():
+            mb = re.search(r'^BASE = os\.environ\.get\([^,]+,\s*"([^"]*)"',
+                           server_py.read_text(encoding="utf-8", errors="replace"),
+                           re.M)
+            rec["base"] = mb.group(1) if mb else ""
+        if not rec["base"]:
+            rec["base_class"] = "unreadable"
+        elif rec["base"].startswith("http://localhost:8000"):
+            rec["base_class"] = "placeholder"
+        elif "{" in rec["base"]:
+            rec["base_class"] = "templated"
+        else:
+            rec["base_class"] = "usable"
 
         smoke = out / "smoke_test.py"
         if not smoke.exists():
@@ -294,6 +332,12 @@ def main() -> None:
             k = r["fail_class"] or "unknown"
             classes[k] = classes.get(k, 0) + 1
 
+    bases: dict[str, int] = {}
+    for r in recs:
+        if r["smoke"]:
+            bases[r["base_class"] or "unknown"] = bases.get(r["base_class"] or "unknown", 0) + 1
+    usable = bases.get("usable", 0)
+
     summary = {
         "date": stamp, "seed": args.seed, "n": len(recs),
         "corpus_size": len(pool),
@@ -302,6 +346,14 @@ def main() -> None:
         "openapi3": {"n": len(v3), "pass": sum(1 for r in v3 if r["smoke"])},
         "swagger2": {"n": len(v2), "pass": sum(1 for r in v2 if r["smoke"])},
         "fail_classes": dict(sorted(classes.items(), key=lambda kv: -kv[1])),
+        # P20: delivered AND pointed at a real host. The gap between these two
+        # numbers is the part of "coverage" a client would have found at their
+        # first live call, not at generation.
+        "delivered_usable_base": sum(1 for r in recs
+                                     if r["smoke"] and not r["base_placeholder"]),
+        "placeholder_base": sum(1 for r in recs if r["base_placeholder"]),
+        "base_classes": dict(sorted(bases.items(), key=lambda kv: -kv[1])),
+        "delivered_with_usable_base": usable,
         "median_seconds": (sorted(r["seconds"] for r in recs)[len(recs)//2]
                            if recs else 0),
         "note": "schema-level only — no credentials, so no --call. Coverage here "
@@ -318,6 +370,12 @@ def main() -> None:
     print("\nfailure classes (biggest first):")
     for k, v in summary["fail_classes"].items():
         print(f"  {v:>4}  {k}")
+    print("\nbase URL of DELIVERED servers (P20 — schema-green is not callable):")
+    for k, v in summary["base_classes"].items():
+        print(f"  {v:>4}  {k}")
+    dl = summary["smoke_pass"]
+    if dl:
+        print(f"  delivered with a usable base: {usable}/{dl} = {usable/dl:.0%}")
     print("\nworst 3.x failures, one example each:")
     seen: set[str] = set()
     for r in v3:
