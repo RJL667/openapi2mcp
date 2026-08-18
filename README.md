@@ -97,26 +97,66 @@ curated list.
 | Run | Sample | Delivered | Median wall |
 |---|---|---|---|
 | seed 17 (`2026-08-17_s17n250`) | 250 | **245 — 98.0%** | 2.6s |
-| seed 23 (`2026-08-17_s23n250`, independent; 23 specs overlap) | 250 | **248 — 99.2%** | 3.0s |
-| **combined** | **500** | **493 — 98.6%** | — |
+| seed 23 (`2026-08-17_s23n250`) | 250 | **248 — 99.2%** | 3.0s |
+| seed 31 (`2026-08-18_s31n250`) | 250 | **249 — 99.6%** | 2.3s |
+| **combined (rows)** | **750** | **742 — 98.9%** | — |
+| **combined (distinct APIs)** | **682** | **674 — 98.8%** | — |
 
-Across both samples: OpenAPI 3.x **292 / 295**, Swagger 2.0 **201 / 202**,
-477 distinct APIs covered.
+Across the three samples: OpenAPI 3.x **451 / 454**, Swagger 2.0 **291 / 293**,
+**682 distinct APIs** covered. The samples are independent draws from the same
+pool and overlap on 65 specs (17∩23 = 23, 17∩31 = 26, 23∩31 = 22); every
+overlapping spec got the same outcome in both runs. The row figure and the
+distinct-API figure are both quoted because they answer different questions.
 
-> **Schema-level only.** There are no credentials for 500 third-party APIs, so
+The per-spec records are in this repo — `bench/corpus_<run id>.jsonl`, 250 rows
+each — so every number in this section can be re-derived without trusting the
+summary.
+
+> **Schema-level only.** There are no credentials for 750 third-party APIs, so
 > `--call` was not run. A pass means the spec was fetched and parsed and the
 > generated server survived `initialize` + `tools/list` + a per-tool schema
 > check — it does **not** mean live requests to that API succeed.
 
-All **seven** non-deliveries are named and attributed in
+That caveat is not decorative. A schema-green server can still be pointed at the
+wrong host, and for a while every one of them was: `base_url()` read only
+OpenAPI 3's `servers` block, and Swagger 2.0 puts its base in `schemes` +
+`host` + `basePath`, so **201 of the first 493 deliveries (40.8%)** carried the
+`http://localhost:8000` placeholder and would have died at the client's first
+live call. Every check in the survey passed on all 201.
+
+So the survey now measures it. `corpus_run.py` records the resolved base URL of
+every delivered server and classifies it `usable` / `placeholder` / `templated` /
+`unreadable`. Seed 31 is the first run carrying it:
+
+| Seed 31 | |
+|---|---|
+| Delivered | 249 / 250 |
+| **Delivered with a usable base** | **242 / 249 — 97.2%** |
+| `placeholder` (`http://localhost:8000`) | 7 |
+| `templated` / `unreadable` | 0 |
+
+Swagger 2.0 specifically: **89 of the 90 delivered** now resolve a real host,
+against 0% before the fix. The 7 placeholders are specs that declare no host at
+all — the placeholder is the correct output there, and it is overridable with
+`--base-url` or the generated `<NAME>_BASE_URL` env var.
+
+All **eight** non-deliveries across the 750 rows are named and attributed in
 [`bench/CORPUS.md`](bench/CORPUS.md), none unexplained:
 
 | Cause | n | What it means |
 |---|---|---|
-| `fetch_error` — raw spaces in the spec URL | 2 | **A defect in this tooling, not the spec.** `urllib` raised `InvalidURL` before a byte moved; fixed, and seed 23 recorded zero fetch errors. |
+| `fetch_error` — raw spaces in the spec URL | 2 | **A defect in this tooling, not the spec.** `urllib` raised `InvalidURL` before a byte moved; fixed, and seeds 23 and 31 recorded zero fetch errors. |
 | `no_operations` — 0-path documents | 3 | Webhook/notification contracts and a stub: nothing invokable, by design. |
-| `no_operations` — every operation `deprecated` | 1 | Correct behaviour; `--include-deprecated` exposes them. |
+| `no_operations` — every operation `deprecated` | 2 | Correct behaviour; `--include-deprecated` exposes them. |
 | `too_large` — 26 MB spec | 1 | Harness cap (25 MB), not a parse failure. |
+
+Seed 31's single non-delivery is the second fully-deprecated API, and it arrived
+filed as `generate_error` — a class that reads as an unexplained defect. The
+generator's no-tool message had been rewritten to name its own cause and the
+survey's classifier still matched the old wording. The classifier now keys on the
+stable `no tools generated:` prefix and sub-classifies on the stated cause; the
+reclassification was replayed against all eight recorded non-deliveries, and the
+other seven keep their stored class.
 
 ```bash
 python3 corpus_run.py --n 250 --seed 17 --jobs 8
